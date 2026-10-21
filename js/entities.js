@@ -17,20 +17,49 @@
   const SAMPLE_MAX = 5000;
   let custom = {};
 
-  function validTemplate(t) {
-    if (!t || typeof t !== 'object' || typeof t.label !== 'string' || !t.label.trim() || t.label.length > 60) return null;
-    if (!t.labels || typeof t.labels !== 'object' || Array.isArray(t.labels)) return null;
-    const names = Object.keys(t.labels);
-    if (!names.length || names.length > LIM.labels) return null;
-    const labels = {};
-    for (const n of names) {
-      const d = t.labels[n];
-      if (typeof d !== 'string' || !n.trim() || n.length > LIM.name || d.length > LIM.desc) return null;
+  const pick = (o, keys) => { for (const k of keys) if (o[k] !== undefined && o[k] !== null) return o[k]; return undefined; };
+
+  /* Normaliza las etiquetas: acepta {nombre: descripción}, {nombre: null}, ["nombre", …] y [{name|label|nombre, description|desc|descripcion}, …]. */
+  function normLabels(raw) {
+    if (Array.isArray(raw)) {
+      return raw.map((it) => {
+        if (typeof it === 'string') return [it, ''];
+        if (it && typeof it === 'object') return [pick(it, ['name', 'label', 'nombre', 'etiqueta']), pick(it, ['description', 'desc', 'descripcion', 'descripción'])];
+        return [undefined, ''];
+      });
+    }
+    if (raw && typeof raw === 'object') return Object.keys(raw).map((n) => [n, raw[n]]);
+    return null;
+  }
+
+  /* Valida una plantilla y devuelve { tpl, error, trimmed }. Es tolerante en lo que no cambia el significado (descripción ausente o nula,
+     espacios, etiquetas dadas como lista, descripciones demasiado largas, que se recortan al límite del servicio) y explica el motivo cuando rechaza. */
+  function checkTemplate(t, fallbackLabel) {
+    if (!t || typeof t !== 'object' || Array.isArray(t)) return { error: 'no es un objeto' };
+    let label = typeof t.label === 'string' ? t.label.trim() : '';
+    if (!label && typeof t.nombre === 'string') label = t.nombre.trim();
+    if (!label) label = fallbackLabel || '';
+    if (!label) return { error: 'falta «label» (nombre de la plantilla)' };
+    const rawLabels = pick(t, ['labels', 'entity_types', 'entities', 'etiquetas']);
+    if (rawLabels === undefined) return { error: t.questions ? 'es una plantilla de preguntas («Definición»), no de etiquetas' : 'falta «labels»' };
+    const list = normLabels(rawLabels);
+    if (!list) return { error: '«labels» debe ser un objeto {etiqueta: descripción} o una lista' };
+    if (!list.length) return { error: 'no tiene etiquetas' };
+    if (list.length > LIM.labels) return { error: 'tiene ' + list.length + ' etiquetas (máximo ' + LIM.labels + ')' };
+    const labels = {}; let trimmed = 0;
+    for (const [rn, rd] of list) {
+      if (typeof rn !== 'string' || !rn.trim() || rn.trim().length > LIM.name) return { error: 'etiqueta sin nombre o de más de ' + LIM.name + ' caracteres' + (typeof rn === 'string' ? ' («' + rn.slice(0, 20) + '…»)' : '') };
+      const n = rn.trim();
+      let d = rd === undefined || rd === null ? '' : (typeof rd === 'string' || typeof rd === 'number') ? String(rd).trim() : null;
+      if (d === null) return { error: 'la descripción de «' + n + '» debe ser texto' };
+      if (d.length > LIM.desc) { d = d.slice(0, LIM.desc); trimmed++; }
+      if (n in labels) return { error: 'etiqueta repetida «' + n + '»' };
       labels[n] = d;
     }
     const sample = typeof t.sample === 'string' && t.sample.length <= SAMPLE_MAX ? t.sample : '';
-    return { label: t.label.trim(), labels, sample, custom: true };
+    return { tpl: { label: label.slice(0, 60), labels, sample, custom: true }, trimmed };
   }
+  function validTemplate(t) { return checkTemplate(t).tpl || null; }
   function loadCustom() {
     custom = {};
     let raw = null; try { raw = JSON.parse(A.store.get('localStorage', CUSTOM_KEY) || 'null'); } catch (e) { raw = null; }
@@ -78,24 +107,41 @@
     const out = {}; Object.keys(custom).forEach((id) => { out[id] = { label: custom[id].label, labels: custom[id].labels, sample: custom[id].sample }; });
     A.download('plantillas_entidades.json', 'application/json', JSON.stringify({ tipo: 'jev-ner-plantillas', version: 1, plantillas: out }, null, 2));
   }
+  /* Extrae [clave, plantilla] de lo que contenga el archivo: {plantillas:{…}}, {plantillas:[…]}, una lista de plantillas o una sola plantilla. */
+  function templatesIn(data) {
+    if (Array.isArray(data)) return data.map((t) => [null, t]);
+    if (!data || typeof data !== 'object') return null;
+    const pl = data.plantillas;
+    if (Array.isArray(pl)) return pl.map((t) => [null, t]);
+    if (pl && typeof pl === 'object') return Object.keys(pl).map((k) => [k, pl[k]]);
+    if (['labels', 'entity_types', 'entities', 'etiquetas', 'questions'].some((k) => data[k] !== undefined)) return [[null, data]];
+    return null;
+  }
   function importTemplates(file) {
     if (!file) return;
     if (file.size > 1024 * 1024) { A.toast('El archivo supera 1 MB.'); return; }
     const fr = new FileReader();
     fr.onerror = () => A.toast('No se pudo leer el archivo.');
     fr.onload = () => {
-      let data; try { data = JSON.parse(String(fr.result).replace(/^\uFEFF/, '')); } catch (e) { A.toast('El archivo no es un JSON válido.'); return; }
-      const src = data && data.plantillas && typeof data.plantillas === 'object' ? data.plantillas : null;
-      if (!src) { A.toast('Formato no reconocido: falta el objeto «plantillas».'); return; }
-      let ok = 0, bad = 0;
-      Object.keys(src).forEach((k) => {
-        const t = validTemplate(src[k]); if (!t) { bad++; return; }
-        custom[/^user_[a-z0-9_]{1,50}$/.test(k) ? k : slug(t.label)] = t; ok++;
+      let data; try { data = JSON.parse(A.decodeJson(fr.result)); } catch (e) { A.toast('El archivo no es un JSON válido (' + (e && e.message ? e.message : e) + ').'); return; }
+      const entries = templatesIn(data);
+      if (!entries || !entries.length) { A.toast('Formato no reconocido: se espera {"plantillas": {…}} o una plantilla con «label» y «labels».'); return; }
+      let ok = 0, replaced = 0, cut = 0; const bad = []; let first = null;
+      entries.forEach(([k, raw]) => {
+        const fb = k ? String(k).replace(/^user_/, '').replace(/_+/g, ' ').trim() : '';
+        const r = checkTemplate(raw, fb);
+        if (!r.tpl) { bad.push('«' + (k || (raw && raw.label) || '?') + '»: ' + r.error); return; }
+        const id = k && /^user_[a-z0-9_]{1,50}$/.test(k) ? k : slug(r.tpl.label);
+        if (custom[id]) replaced++;
+        custom[id] = r.tpl; ok++; cut += r.trimmed; if (!first) first = id;
       });
-      persistCustom(); fillPresetSelect($('ner-preset').value);
-      A.toast(ok + ' plantilla(s) importada(s)' + (bad ? '; ' + bad + ' descartada(s) por no ser válidas' : ''));
+      if (ok) persistCustom();
+      fillPresetSelect(first || $('ner-preset').value);
+      if (first && !N.dirty) loadPreset(first);
+      A.toast((ok ? ok + ' plantilla(s) importada(s)' + (replaced ? ' (' + replaced + ' sustituye(n) a una existente)' : '') + (cut ? '; ' + cut + ' descripción(es) recortada(s) a ' + LIM.desc + ' caracteres' : '') + (first && N.dirty ? '; elija «' + custom[first].label + '» y pulse «Cargar»' : '') : 'No se importó ninguna plantilla') +
+        (bad.length ? '; descartada(s) ' + bad.length + ' → ' + bad.slice(0, 2).join(' · ') + (bad.length > 2 ? ' …' : '') : ''));
     };
-    fr.readAsText(file);
+    fr.readAsArrayBuffer(file);
   }
 
   /* Carga las etiquetas de una plantilla. El texto solo se sustituye si está vacío o si es todavía el ejemplo de la plantilla anterior,
@@ -318,6 +364,7 @@
   A.actions['ner-tpl-delete'] = deleteTemplate;
   A.actions['ner-tpl-export'] = exportTemplates;
   A.actions['ner-tpl-import'] = () => $('ner-tpl-file').click();
+  A.actions['ner-new'] = () => { N.labels = []; N.dirty = true; $('ner-tpl-name').value = ''; renderLabels(); A.toast('Etiquetas vacías: añada las suyas con «+ Etiqueta» y guárdelas con «Mi plantilla»'); };
   A.actions['ner-load-preset'] = () => loadPreset($('ner-preset').value);
   A.actions['ner-add-label'] = () => { if (N.labels.length >= LIM.labels) { A.toast('Máximo ' + LIM.labels + ' etiquetas.'); return; } N.labels.push({ uid: ++N.uid, name: '', desc: '' }); N.dirty = true; renderLabels(); };
   A.actions['ner-remove-label'] = (el) => { N.labels = N.labels.filter((l) => String(l.uid) !== el.dataset.nl); N.dirty = true; renderLabels(); };

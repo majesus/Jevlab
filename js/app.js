@@ -30,7 +30,7 @@
   let toastTimer = null;
   function toast(msg) {
     const t = $('toast'); t.textContent = msg; t.classList.remove('opacity-0'); t.classList.add('opacity-100');
-    clearTimeout(toastTimer); toastTimer = setTimeout(() => { t.classList.add('opacity-0'); t.classList.remove('opacity-100'); }, 3200);
+    clearTimeout(toastTimer); toastTimer = setTimeout(() => { t.classList.add('opacity-0'); t.classList.remove('opacity-100'); }, Math.max(3200, String(msg).length * 55));
   }
 
   let bannerTimer = null;
@@ -767,7 +767,7 @@
     if (!t) { toast('No se pudo guardar: el esquema excede los límites de tamaño.'); return; }
     const id = defSlug(name); const existed = !!defCustom[id];
     defCustom[id] = t; persistDefCustom(); S.presetKey = id; fillDefSelect(id); refreshDerived();
-    toast((existed ? 'Plantilla «' + name + '» actualizada' : 'Plantilla «' + name + '» guardada') + ' · ' + Object.keys(t.questions).length + ' pregunta(s), ' + t.samples.length + ' texto(s) de ejemplo');
+    toast((existed ? 'Plantilla «' + name + '» actualizada' : 'Plantilla «' + name + '» guardada') + ' · ' + Object.keys(t.questions).length + ' pregunta(s) (' + Object.keys(t.questions).join(', ') + '), ' + t.samples.length + ' texto(s) de ejemplo');
   }
   function deleteDefTemplate() {
     const id = $('preset-select').value; if (!defCustom[id]) return;
@@ -786,15 +786,16 @@
     const fr = new FileReader();
     fr.onerror = () => toast('No se pudo leer el archivo.');
     fr.onload = () => {
-      let data; try { data = JSON.parse(String(fr.result).replace(/^\uFEFF/, '')); } catch (e) { toast('El archivo no es un JSON válido.'); return; }
+      let data; try { data = JSON.parse(decodeJson(fr.result)); } catch (e) { toast('El archivo no es un JSON válido.'); return; }
       const src = data && data.plantillas && typeof data.plantillas === 'object' ? data.plantillas : null;
       if (!src) { toast('Formato no reconocido: falta el objeto «plantillas».'); return; }
+      if (Object.keys(src).length && Object.keys(src).every((k) => src[k] && typeof src[k] === 'object' && src[k].labels && !src[k].questions)) { toast('Este archivo contiene plantillas de etiquetas (pestaña «Entidades»); impórtelo allí.'); return; }
       let ok = 0, bad = 0;
       Object.keys(src).forEach((k) => { const t = validDefTemplate(src[k]); if (!t) { bad++; return; } defCustom[/^user_[a-z0-9_]{1,50}$/.test(k) ? k : defSlug(t.label)] = t; ok++; });
       persistDefCustom(); fillDefSelect($('preset-select').value);
       toast(ok + ' plantilla(s) importada(s)' + (bad ? '; ' + bad + ' descartada(s) por no ser válidas' : ''));
     };
-    fr.readAsText(file);
+    fr.readAsArrayBuffer(file);
   }
 
   function loadPreset(key) {
@@ -823,6 +824,14 @@
   function decodeBuffer(buf) {
     try { return { text: new TextDecoder('utf-8', { fatal: true }).decode(buf), enc: 'UTF-8' }; } catch (e) { /* no es UTF-8 */ }
     try { return { text: new TextDecoder('windows-1252').decode(buf), enc: 'Windows-1252' }; } catch (e) { return { text: new TextDecoder('utf-8').decode(buf), enc: 'UTF-8 (con sustituciones)' }; }
+  }
+
+  /** Decodifica un JSON de plantillas: UTF-8 (con o sin BOM), UTF-16 LE/BE con BOM (lo que escribe Windows PowerShell con «>» u Out-File) y, en último caso, Windows-1252. */
+  function decodeJson(buf) {
+    const b = new Uint8Array(buf);
+    if (b.length >= 2 && b[0] === 0xFF && b[1] === 0xFE) return new TextDecoder('utf-16le').decode(b.subarray(2));
+    if (b.length >= 2 && b[0] === 0xFE && b[1] === 0xFF) return new TextDecoder('utf-16be').decode(b.subarray(2));
+    return decodeBuffer(buf).text.replace(/^\uFEFF/, '');
   }
 
   function onFile(file) {
@@ -871,6 +880,7 @@
       case 'def-tpl-export': exportDefTemplates(); break;
       case 'def-tpl-import': $('def-tpl-file').click(); break;
       case 'load-preset': loadPreset($('preset-select').value); break;
+      case 'def-new': S.questions = []; $('def-tpl-name').value = ''; renderQuestions(); refreshDerived(); toast('Esquema vacío: añada sus preguntas con «+ Choice», «+ Score» o «+ Noul» y guárdelas con «Mi plantilla»'); break;
       case 'load-samples': loadSamplesAsBatch(); break;
       case 'next-sample': nextSample(); break;
       case 'add-question': { const nq = newQuestion(el.dataset.primitive, uniqueName(el.dataset.primitive === 'choice' ? 'clasificacion' : el.dataset.primitive === 'score' ? 'puntuacion' : 'criterio')); S.questions.push(nq); renderQuestions(); refreshDerived(); break; }
@@ -923,5 +933,5 @@
     paintMode(); paintInputMode(); loadPreset(S.presetKey); switchTab('workspace');
   }
 
-  window.JEVApp = { S, currentItems, esc, fmt, pct, clip, toast, banner, download, copyText, csvCell, fmtNum, store, actions, tabHooks, sleep, switchTab, boot, parseCsv, compile, verifyAll, ID_RE, LIMITS };
+  window.JEVApp = { decodeJson, S, currentItems, esc, fmt, pct, clip, toast, banner, download, copyText, csvCell, fmtNum, store, actions, tabHooks, sleep, switchTab, boot, parseCsv, compile, verifyAll, ID_RE, LIMITS };
 })();
