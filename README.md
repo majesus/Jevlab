@@ -17,6 +17,103 @@ Instalar GLiNER habilita la extracción real de entidades. **No activa la clasif
 2. Extraiga **todo** el ZIP en una carpeta donde pueda guardar archivos, por ejemplo, Documentos. No ejecute la aplicación dentro del ZIP.
 3. Elija una de las opciones siguientes. **Abrir `index.html` directamente solo permite usar simulación, aunque ya tenga GLiNER instalado.** Para usar cualquiera de los motores reales, arranque el servidor local con el lanzador.
 
+## Antes de usar un modelo real: instalar Python una sola vez
+
+**No necesita saber programar.** Python es el programa que permite poner en marcha la aplicación. Lea solo el apartado de su sistema operativo. Para trabajar únicamente en simulación, puede saltarse esta instalación.
+
+Cuando vea un recuadro con una orden, copie **solo el texto de dentro**, péguelo en la ventana indicada y pulse **Intro**. No escriba estas órdenes en el buscador de Google ni dentro de la aplicación Jevlab.
+
+### Windows · copiar, pegar y comprobar
+
+1. Pulse la tecla **Windows**, escriba **PowerShell** y abra la aplicación que aparece.
+2. Copie y pegue esta orden; pulse **Intro**:
+
+   ```powershell
+   winget install --id Python.Python.3.12 --exact --architecture x64
+   ```
+
+3. Espere a que termine. Si pregunta por los acuerdos de instalación, lea el mensaje y acepte si está de acuerdo.
+4. **Cierre PowerShell y vuelva a abrirlo**. Copie y ejecute:
+
+   ```powershell
+   py -3.12 --version
+   ```
+
+5. Si aparece **Python 3.12** seguido de otro número, ya está instalado. Puede cerrar PowerShell.
+
+**¿Dice que `winget` no se reconoce?** Como alternativa, abra la [página oficial de Python para Windows](https://www.python.org/downloads/windows/), busque Python 3.12 y su instalador **Windows installer (64-bit)**. Abra el archivo descargado, marque **Add python.exe to PATH** y siga la instalación. Después cierre y vuelva a abrir PowerShell y repita la comprobación anterior. En un equipo del centro con permisos bloqueados, pida ayuda al soporte informático.
+
+**Ahora GLiNER:** en la carpeta descargada de Jevlab, haga doble clic en **`INSTALAR_GLINER.bat`**. Espere a «Instalacion y prueba correctas». Después haga doble clic en **`INICIAR.bat`** y deje su ventana abierta. Las siguientes veces solo necesitará `INICIAR.bat`.
+
+### macOS · instalar con un asistente y comprobar
+
+Para una primera instalación, lo más sencillo es usar el instalador oficial, sin añadir otras herramientas:
+
+1. Abra la [página oficial de Python para Mac](https://www.python.org/downloads/macos/). Busque Python 3.12 y descargue el **macOS 64-bit universal2 installer**. Sirve para Mac con procesador Intel o Apple Silicon.
+2. Abra el archivo `.pkg` descargado y siga los botones del asistente.
+3. En **Aplicaciones → Python 3.12**, abra **Install Certificates.command** y espere a que termine.
+4. Pulse **⌘ + espacio**, escriba **Terminal** y ábrala. Copie esta orden y pulse **Intro**:
+
+   ```sh
+   python3 --version
+   ```
+
+5. Si aparece **Python 3.12** seguido de otro número, la comprobación está hecha. Si tenía otra versión y sigue apareciendo, cierre y vuelva a abrir Terminal. Si persiste, pida ayuda antes de seguir.
+
+**Si ya tiene Homebrew y prefiere instalar desde Terminal**, puede utilizar `brew install python@3.12`. Si aparece «command not found: brew», utilice el instalador del apartado anterior; no necesita instalar Homebrew para esta actividad.
+
+**Ahora GLiNER:** abra Terminal y escriba `cd` seguido de un espacio, **sin pulsar Intro todavía**. Arrastre desde Finder la carpeta de Jevlab que contiene `iniciar.sh` hasta la ventana de Terminal. Ahora pulse **Intro**. Así la terminal queda situada en la carpeta correcta, sin tener que escribir su ruta.
+
+Copie y ejecute esta orden y espere a que termine la instalación y la prueba:
+
+```sh
+sh instalar_gliner.sh
+```
+
+Después ejecute:
+
+```sh
+sh iniciar.sh
+```
+
+Deje la terminal abierta mientras trabaja. En las siguientes sesiones, sitúese de nuevo en esa carpeta y ejecute solo `sh iniciar.sh`.
+
+### Linux · Ubuntu, Linux Mint y Debian
+
+Estas órdenes corresponden a esas distribuciones. Si utiliza otra, pida las instrucciones de instalación de Python al docente o al soporte; no tiene que buscar equivalencias por su cuenta.
+
+1. Abra **Terminal** desde el menú de aplicaciones. En Ubuntu también puede pulsar **Ctrl + Alt + T**.
+2. Copie y ejecute estas órdenes **una cada vez**, esperando a que termine cada una:
+
+   ```sh
+   sudo apt update
+   ```
+
+   ```sh
+   sudo apt install python3 python3-venv python3-pip
+   ```
+
+3. Puede pedir la contraseña de su usuario. **Al escribirla no aparecen letras ni asteriscos: es normal.** Escríbala y pulse Intro. Si pide confirmar la instalación, responda como indique el mensaje.
+4. Compruebe la instalación:
+
+   ```sh
+   python3 --version
+   ```
+
+5. Debe aparecer **Python 3.10 o una versión posterior**. Si aparece una versión anterior o no tiene permisos de instalación, pida ayuda al soporte.
+
+**Ahora GLiNER:** abra la carpeta descargada que contiene `iniciar.sh`. Pulse con el botón derecho en un espacio vacío y elija **Abrir en terminal**, si aparece esa opción. Ejecute primero `sh instalar_gliner.sh`; cuando termine correctamente, ejecute `sh iniciar.sh`. Deje la terminal abierta. Las siguientes veces solo necesita abrirla en esa carpeta y ejecutar `sh iniciar.sh`.
+
+### ¿Dónde se instala GLiNER? No tiene que elegir una carpeta
+
+**No cree carpetas ni instale paquetes por su cuenta.** El instalador de Jevlab crea automáticamente un espacio separado para GLiNER, fuera de la carpeta de la aplicación. No tiene que crear ni activar un «entorno virtual» manualmente. La primera instalación necesita internet y puede tardar varios minutos; espere al mensaje final de éxito.
+
+Una vez abierta la aplicación, vaya a **3 · Entidades (GLiNER)**, seleccione **GLiNER local** y pulse **Extraer entidades**. El resultado debe indicar **GLiNER2** y el nombre del modelo. Así comprueba que la extracción es real.
+
+**Si algo falla:** guarde el mensaje de error o haga una captura y pida ayuda. No es necesario repetir toda la instalación ni probar órdenes distintas al azar.
+
+Fuentes de las instrucciones: [instalación con WinGet](https://learn.microsoft.com/en-us/windows/package-manager/winget/install), [Python para macOS](https://docs.python.org/3.12/using/mac.html), [Python 3.12 con Homebrew](https://formulae.brew.sh/formula/python@3.12) y [entornos Python en Ubuntu](https://packages.ubuntu.com/search?keywords=python3-venv&searchon=names).
+
 ## 2. Elegir qué motores quiere utilizar
 
 | Opción | Clasificación (Jev) | Entidades (GLiNER) | Qué necesita | Cómo abrir |
@@ -43,7 +140,7 @@ Necesita Python **3.10 o superior**; se recomienda **Python 3.12 de 64 bits**. L
 
 #### Windows: primera instalación
 
-1. Instale Python 3.12 de 64 bits si todavía no lo tiene. Encontrará los pasos en [la guía completa](LEEME_INSTRUCCIONES.txt).
+1. Instale Python si todavía no lo tiene siguiendo el apartado **«Antes de usar un modelo real»** de este README.
 2. Ejecute `INSTALAR_GLINER.bat` una vez por equipo y cuenta de usuario. Reserve espacio para paquetes y modelo, que pueden ocupar varios GB.
 3. Espere al mensaje **«Instalacion y prueba correctas»**. El instalador comprueba las dependencias y realiza una extracción con el modelo real.
 4. Ejecute `INICIAR.bat` y mantenga abierta la ventana del servidor mientras trabaja.
@@ -51,7 +148,7 @@ Necesita Python **3.10 o superior**; se recomienda **Python 3.12 de 64 bits**. L
 
 #### macOS y Linux: primera instalación
 
-Con Python 3.10 o superior instalado, abra una terminal en la carpeta extraída. Instale GLiNER una vez:
+Si todavía no tiene Python, siga primero el apartado de **macOS** o **Linux** de este README. Allí se explica también cómo abrir la terminal en la carpeta correcta. Con Python 3.10 o superior instalado, instale GLiNER una vez:
 
 ```sh
 sh instalar_gliner.sh
