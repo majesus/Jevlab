@@ -230,7 +230,7 @@
       <section class="lg:col-span-7 space-y-4">
         <div class="bg-white border border-swiss-border p-4 space-y-2">
           <div class="flex flex-wrap items-center justify-between gap-2"><label for="ner-text" class="text-xs font-mono uppercase font-bold tracking-wider">Texto</label>
-          <div class="flex flex-wrap items-center gap-2 text-xs font-mono"><label for="ner-rec">registro nº</label><input id="ner-rec" type="number" min="1" value="1" class="w-16 border border-swiss-border px-1.5 py-1"><button data-act="ner-from-workspace" class="px-2.5 py-1 border border-swiss-black hover:bg-swiss-black hover:text-white">Usar el texto de «Definición»</button></div></div>
+          <div class="flex flex-wrap items-center gap-2 text-xs font-mono"><label for="ner-rec">registro nº</label><input id="ner-rec" type="number" min="1" value="1" class="w-16 border border-swiss-border px-1.5 py-1"><button data-act="ner-from-workspace" class="px-2.5 py-1 border border-swiss-black hover:bg-swiss-black hover:text-white">Usar el texto de «Definición»</button><button data-act="ner-sample" class="px-2.5 py-1 border border-swiss-black hover:bg-swiss-black hover:text-white">Ejemplo de la plantilla</button></div></div>
           <textarea id="ner-text" rows="8" class="w-full font-mono text-xs p-3 border border-swiss-border focus:border-swiss-black focus:outline-none leading-relaxed resize-y"></textarea>
           <div class="flex items-center justify-between"><span id="ner-count" class="text-[11px] font-mono text-swiss-grayDark"></span><button id="ner-run" data-act="ner-run" class="bg-swiss-red hover:bg-swiss-redHover disabled:opacity-50 text-white px-5 py-2 text-xs font-mono uppercase tracking-wider font-bold">Extraer entidades</button></div>
         </div>

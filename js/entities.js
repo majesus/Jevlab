@@ -10,7 +10,7 @@
   const PALETTE = ['bg-red-200', 'bg-blue-200', 'bg-green-200', 'bg-yellow-200', 'bg-purple-200', 'bg-pink-200', 'bg-orange-200', 'bg-teal-200'];
   const SWATCH = ['bg-red-400', 'bg-blue-400', 'bg-green-400', 'bg-yellow-400', 'bg-purple-400', 'bg-pink-400', 'bg-orange-400', 'bg-teal-400'];
 
-  const N = { labels: [], uid: 0, health: null, last: null, inited: false, busy: false, dirty: false, followed: null, sample: '' };
+  const N = { labels: [], uid: 0, health: null, last: null, inited: false, busy: false, dirty: false, followed: null, sample: '', userText: false };
 
   /* ───── plantillas propias (localStorage + exportación/importación JSON) ───── */
   const CUSTOM_KEY = 'jev2_ner_custom';
@@ -144,15 +144,17 @@
     fr.readAsArrayBuffer(file);
   }
 
-  /* Carga las etiquetas de una plantilla. El texto solo se sustituye si está vacío o si es todavía el ejemplo de la plantilla anterior,
-     de modo que no se pierde un texto propio ni el traído desde «Definición». */
+  /* Carga las etiquetas de una plantilla. El texto se sustituye por el ejemplo de la plantilla salvo que lo haya escrito o pegado el usuario (el traído desde «Definición» sí se sustituye). */
   function loadPreset(key) {
     const p = getPreset(key); if (!p) return;
     N.labels = Object.keys(p.labels).map((name) => ({ uid: ++N.uid, name, desc: p.labels[name] }));
     N.dirty = false;
     const cur = $('ner-text').value;
-    if (!cur.trim() || cur === N.sample) { $('ner-text').value = p.sample; N.last = null; $('ner-result').classList.add('hidden'); }
+    let kept = false;
+    if (!cur.trim() || cur === N.sample || !N.userText) { $('ner-text').value = p.sample; N.userText = false; N.last = null; $('ner-result').classList.add('hidden'); }
+    else kept = !!p.sample && cur !== p.sample;
     N.sample = p.sample;
+    if (kept) A.toast('Se conserva el texto que usted escribió; use «Ejemplo de la plantilla» para sustituirlo por el de «' + p.label + '».');
     $('ner-preset').value = key;
     $('ner-tpl-delete').disabled = !/^user_/.test(key); $('ner-tpl-delete').classList.toggle('opacity-40', $('ner-tpl-delete').disabled);
     renderLabels(); updateCount();
@@ -362,7 +364,7 @@
     $('ner-tpl-file').addEventListener('change', (e) => { importTemplates(e.target.files[0]); e.target.value = ''; });
     loadPreset(Object.keys(PRE.NER_PRESETS)[0]);
     syncWithDefinition();
-    $('ner-text').addEventListener('input', updateCount);
+    $('ner-text').addEventListener('input', () => { N.userText = true; updateCount(); });
     $('ner-threshold').addEventListener('input', (e) => { $('ner-threshold-out').textContent = Number(e.target.value).toFixed(2); });
     $('ner-labels').addEventListener('input', (e) => {
       const el = e.target; const l = N.labels.find((x) => String(x.uid) === el.dataset.nl); if (!l) return;
@@ -376,12 +378,17 @@
   A.actions['ner-tpl-export'] = exportTemplates;
   A.actions['ner-tpl-import'] = () => $('ner-tpl-file').click();
   A.actions['ner-new'] = () => { N.labels = []; N.dirty = true; $('ner-tpl-name').value = ''; renderLabels(); A.toast('Etiquetas vacías: añada las suyas con «+ Etiqueta» y guárdelas con «Mi plantilla»'); };
+  A.actions['ner-sample'] = () => {
+    const p = getPreset($('ner-preset').value);
+    if (!p || !p.sample) { A.toast('Esta plantilla no incluye texto de ejemplo.'); return; }
+    $('ner-text').value = p.sample; N.sample = p.sample; N.userText = false; N.last = null; $('ner-result').classList.add('hidden'); updateCount();
+  };
   A.actions['ner-load-preset'] = () => loadPreset($('ner-preset').value);
   A.actions['ner-add-label'] = () => { if (N.labels.length >= LIM.labels) { A.toast('Máximo ' + LIM.labels + ' etiquetas.'); return; } N.labels.push({ uid: ++N.uid, name: '', desc: '' }); N.dirty = true; renderLabels(); };
   A.actions['ner-remove-label'] = (el) => { N.labels = N.labels.filter((l) => String(l.uid) !== el.dataset.nl); N.dirty = true; renderLabels(); };
   function setText(text) {
     if (!text || !text.trim()) { A.toast('El registro no tiene texto.'); return false; }
-    $('ner-text').value = text; N.last = null; $('ner-result').classList.add('hidden'); updateCount(); return true;
+    $('ner-text').value = text; N.userText = false; N.last = null; $('ner-result').classList.add('hidden'); updateCount(); return true;
   }
   /* Puente con la pestaña «Definición»: el mismo texto que se clasifica con Jev se puede pasar a la extracción de entidades. */
   A.actions['ner-from-workspace'] = () => {
