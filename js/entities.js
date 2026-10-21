@@ -277,6 +277,14 @@
     } finally { clearTimeout(t); }
   }
 
+  /* Normaliza la respuesta de GLiNER: reconcilia posiciones y descarta lo que no es literal del texto. */
+  function entitiesFromData(text, data) {
+    let ents = Array.isArray(data.entities) ? data.entities : []; let dropped = data.dropped || 0;
+    if (data.offsets === 'codepoints') { const rec = NER.reconcileOffsets(text, ents); ents = rec.entities; dropped += rec.dropped.length; }
+    else { const ok = ents.filter((e) => Number.isInteger(e.start) && Number.isInteger(e.end) && text.slice(e.start, e.end) === e.text); dropped += ents.length - ok.length; ents = ok; }
+    return { ents: ents.map((e) => ({ label: e.label, text: e.text, start: e.start, end: e.end, confidence: Number(e.confidence), source: 'GLiNER2' })), dropped };
+  }
+
   async function run() {
     if (N.busy) return;
     A.banner(null);
@@ -298,10 +306,8 @@
         const waitMs = pref === 'auto' && !(health && health.data && health.data.model_loaded) ? 15000 : 190000;
         try {
           const data = await callGliner(text, labels, threshold, waitMs);
-          let ents = Array.isArray(data.entities) ? data.entities : []; let dropped = data.dropped || 0;
-          if (data.offsets === 'codepoints') { const rec = NER.reconcileOffsets(text, ents); ents = rec.entities; dropped += rec.dropped.length; }
-          else { const ok = ents.filter((e) => Number.isInteger(e.start) && Number.isInteger(e.end) && text.slice(e.start, e.end) === e.text); dropped += ents.length - ok.length; ents = ok; }
-          result = { engine: 'gliner', model: data.model || 'gliner2', entities: ents.map((e) => ({ label: e.label, text: e.text, start: e.start, end: e.end, confidence: Number(e.confidence), source: 'GLiNER2' })), notes: dropped ? [dropped + ' entidades descartadas por no ser literales del texto o por tener posiciones inválidas.'] : [], threshold, ms: Math.round(performance.now() - t0), serverMs: data.elapsed_ms };
+          const { ents, dropped } = entitiesFromData(text, data);
+          result = { engine: 'gliner', model: data.model || 'gliner2', entities: ents, notes: dropped ? [dropped + ' entidades descartadas por no ser literales del texto o por tener posiciones inválidas.'] : [], threshold, ms: Math.round(performance.now() - t0), serverMs: data.elapsed_ms };
         } catch (e) {
           if (pref !== 'auto') throw e;
           const timedOut = e && /Tiempo de espera/.test(e.message || '');
@@ -316,6 +322,94 @@
       }
       N.last = { text, labels, result }; render();
     } catch (e) { A.banner('error', 'Extracción fallida: ' + (e && e.message ? e.message : e)); } finally { N.busy = false; $('ner-run').disabled = false; $('ner-run').textContent = 'Extraer entidades'; }
+  }
+
+
+  /* ───── lote: todos los registros del CSV cargado en «Definición» ───── */
+
+  const BATCH_MAX = { gliner: 500, sim: 2000 };
+  const B = { running: false, cancel: false, records: [], meta: null };
+
+  function paintBatchInfo() {
+    const n = A.currentItems().items.length; const el = $('ner-batch-info'); if (!el) return;
+    el.textContent = n > 1 ? n.toLocaleString('es-ES') + ' registros en «Definición»' : n === 1 ? '1 registro (cargue un CSV en «Definición» → Lote CSV para varios)' : 'sin registros en «Definición»';
+  }
+
+  async function runBatch() {
+    if (B.running || N.busy) return;
+    A.banner(null);
+    const { items } = A.currentItems();
+    if (!items.length) { A.banner('error', 'No hay registros: cargue un CSV en «Definición» (Lote CSV) y elija la columna de texto.'); return; }
+    const { labels, errors } = readLabels();
+    if (errors.length) { A.banner('error', errors[0] + (errors.length > 1 ? ' (+' + (errors.length - 1) + ' más)' : '')); return; }
+    const threshold = Number($('ner-threshold').value);
+    const pref = (document.querySelector('input[name=ner-engine]:checked') || {}).value || 'auto';
+    B.running = true; B.cancel = false; $('ner-batch-run').disabled = true; $('ner-batch-cancel').classList.remove('hidden');
+    const notes = [];
+    try {
+      let health = N.health; if (pref !== 'sim' && (!health || health.state !== 'ready')) health = await checkHealth();
+      const ready = !!(health && health.state === 'ready');
+      // El motor se fija una vez para todo el lote: no se mezclan GLiNER y simulación entre registros.
+      let engine;
+      if (pref === 'sim') engine = 'sim';
+      else if (pref === 'gliner') { if (!ready) { A.banner('error', 'GLiNER local no está disponible (ver el estado del motor). Use «Automático» o «Simulación».'); return; } engine = 'gliner'; }
+      else if (ready && health.data && health.data.model_loaded) engine = 'gliner';
+      else { engine = 'sim'; notes.push(ready ? 'GLiNER aún no tiene el modelo en memoria: todo el lote se procesó con la simulación léxica. Para usar el modelo elija «GLiNER local» y espere a su carga.' : 'GLiNER local no disponible: todo el lote se procesó con la simulación léxica.'); }
+      if (items.length > BATCH_MAX[engine]) { A.banner('error', 'El lote tiene ' + items.length.toLocaleString('es-ES') + ' registros; el máximo con ' + (engine === 'gliner' ? 'GLiNER' : 'la simulación') + ' es ' + BATCH_MAX[engine].toLocaleString('es-ES') + '. Divídalo en varios archivos.'); return; }
+      const records = []; let consecutiveErrors = 0; let model = engine === 'gliner' ? (health.data && health.data.model) || 'gliner2' : 'jevner-sim';
+      const t0 = performance.now();
+      for (let i = 0; i < items.length; i++) {
+        if (B.cancel) { notes.push('Lote cancelado tras ' + i + ' de ' + items.length + ' registros.'); break; }
+        const it = items[i]; const text = String(it.label);
+        $('ner-batch-progress').textContent = (i + 1) + ' / ' + items.length;
+        const rec = { n: it.n, chars: text.length, entities: [], error: null };
+        if (text.length > LIM.text) rec.error = 'el texto supera ' + LIM.text.toLocaleString('es-ES') + ' caracteres';
+        else if (engine === 'gliner') {
+          try { const data = await callGliner(text, labels, threshold); rec.entities = entitiesFromData(text, data).ents; model = data.model || model; consecutiveErrors = 0; }
+          catch (e) { rec.error = e && e.message ? e.message : String(e); consecutiveErrors++; }
+          if (consecutiveErrors >= 3) { records.push(rec); notes.push('Lote detenido: tres errores consecutivos de GLiNER (' + rec.error + ').'); break; }
+        } else {
+          rec.entities = NER.extract(text, labels, { threshold }).entities.map((e) => ({ label: e.label, text: e.text, start: e.start, end: e.end, confidence: Number(e.confidence), source: e.via || e.source || 'simulación' }));
+          if (i % 25 === 24) await new Promise((r) => setTimeout(r, 0));
+        }
+        records.push(rec);
+      }
+      B.records = records; B.meta = { engine, model, threshold, labels, ms: Math.round(performance.now() - t0), notes };
+      renderBatch();
+    } catch (e) { A.banner('error', 'Lote fallido: ' + (e && e.message ? e.message : e)); } finally {
+      B.running = false; $('ner-batch-run').disabled = false; $('ner-batch-cancel').classList.add('hidden'); $('ner-batch-progress').textContent = '';
+    }
+  }
+
+  function renderBatch() {
+    const box = $('ner-batch-out'); const m = B.meta; const recs = B.records;
+    const total = recs.reduce((a, r) => a + r.entities.length, 0); const withE = recs.filter((r) => r.entities.length).length; const errs = recs.filter((r) => r.error).length;
+    const names = Object.keys(m.labels);
+    const perLabel = names.map((n) => '<tr><td class="p-1.5 font-mono">' + esc(n) + '</td><td class="p-1.5 text-right font-mono">' + recs.reduce((a, r) => a + r.entities.filter((e) => e.label === n).length, 0) + '</td><td class="p-1.5 text-right font-mono">' + recs.filter((r) => r.entities.some((e) => e.label === n)).length + '</td></tr>').join('');
+    const rows = []; recs.forEach((r) => r.entities.forEach((e) => { if (rows.length < 300) rows.push('<tr><td class="p-1.5 font-mono">' + r.n + '</td><td class="p-1.5 font-mono">' + esc(e.label) + '</td><td class="p-1.5">' + esc(e.text) + '</td><td class="p-1.5 text-right font-mono">' + e.start + '–' + e.end + '</td><td class="p-1.5 text-right font-mono">' + (isFinite(e.confidence) ? e.confidence.toFixed(3) : '—') + '</td></tr>'); }));
+    box.classList.remove('hidden');
+    box.innerHTML = '<div class="border-l-4 ' + (m.engine === 'gliner' ? 'border-green-500 bg-green-50' : 'border-yellow-500 bg-yellow-50') + ' p-2 leading-relaxed">Motor: <strong>' + (m.engine === 'gliner' ? 'GLiNER2 · ' + esc(m.model) : 'simulación léxica (no es el modelo)') + '</strong> · umbral ' + m.threshold.toFixed(2) + ' · ' + recs.length + ' registro(s) en ' + (m.ms / 1000).toFixed(1) + ' s · ' + total + ' entidades en ' + withE + ' registro(s)' + (errs ? ' · <strong>' + errs + ' con error</strong>' : '') + '</div>' +
+      (m.notes.length ? '<div class="text-swiss-grayDark space-y-1">' + m.notes.map((n) => '<div>• ' + esc(n) + '</div>').join('') + '</div>' : '') +
+      '<div class="flex gap-2"><button data-act="ner-batch-csv" class="px-2.5 py-1 border border-swiss-black hover:bg-swiss-black hover:text-white">CSV</button><button data-act="ner-batch-json" class="px-2.5 py-1 bg-swiss-black text-white hover:bg-swiss-charcoal">JSON</button></div>' +
+      '<table class="w-full text-left text-xs"><thead><tr class="bg-swiss-grayBg font-mono text-[11px] uppercase"><th class="p-1.5">Etiqueta</th><th class="p-1.5 text-right">Entidades</th><th class="p-1.5 text-right">Registros</th></tr></thead><tbody class="divide-y divide-swiss-border">' + perLabel + '</tbody></table>' +
+      '<div class="overflow-x-auto max-h-96 overflow-y-auto"><table class="w-full text-left text-xs"><thead><tr class="bg-swiss-grayBg font-mono text-[11px] uppercase sticky top-0"><th class="p-1.5">Reg.</th><th class="p-1.5">Etiqueta</th><th class="p-1.5">Texto</th><th class="p-1.5 text-right">Inicio–fin</th><th class="p-1.5 text-right">Confianza</th></tr></thead><tbody class="divide-y divide-swiss-border">' + (rows.join('') || '<tr><td colspan="5" class="p-3 text-center text-swiss-grayDark">Sin entidades por encima del umbral.</td></tr>') + '</tbody></table></div>' +
+      (total > 300 ? '<div class="text-swiss-grayDark">Se muestran las primeras 300 de ' + total + ' entidades; el CSV y el JSON las incluyen todas.</div>' : '');
+  }
+
+  function batchCsv() {
+    if (!B.meta) return; const d = ';'; const m = B.meta;
+    const motor = m.engine === 'gliner' ? 'GLiNER2' : 'simulación';
+    const lines = [['registro', 'estado', 'etiqueta', 'texto', 'inicio', 'fin', 'confianza', 'motor'].join(d)];
+    B.records.forEach((r) => {
+      if (r.error) lines.push([r.n, 'error: ' + r.error, '', '', '', '', '', motor].map((x) => A.csvCell(x, d)).join(d));
+      else if (!r.entities.length) lines.push([r.n, 'sin entidades', '', '', '', '', '', motor].map((x) => A.csvCell(x, d)).join(d));
+      else r.entities.slice().sort((a, b) => a.start - b.start).forEach((e) => lines.push([r.n, 'ok', e.label, e.text, e.start, e.end, e.confidence, motor].map((x) => A.csvCell(x, d)).join(d)));
+    });
+    A.download(m.engine === 'gliner' ? 'jev_entidades_lote.csv' : 'jev_entidades_lote_SIMULACION.csv', 'text/csv;charset=utf-8', '﻿' + lines.join('\r\n') + '\r\n');
+  }
+  function batchJson() {
+    if (!B.meta) return; const m = B.meta;
+    A.download(m.engine === 'gliner' ? 'jev_entidades_lote.json' : 'jev_entidades_lote_SIMULACION.json', 'application/json', JSON.stringify({ exported_at: new Date().toISOString(), engine: m.engine, model: m.model, threshold: m.threshold, offsets: 'UTF-16 (índices de String de JavaScript)', labels: m.labels, notes: m.notes, records: B.records.map((r) => ({ row: r.n, chars: r.chars, error: r.error, entities: r.entities })) }, null, 2));
   }
 
   /* ───── presentación ───── */
@@ -357,6 +451,7 @@
   /* ───── registro en la aplicación ───── */
 
   A.tabHooks.entities = function () {
+    paintBatchInfo();
     if (N.inited) { syncWithDefinition(); return; }
     N.inited = true;
     loadCustom(); fillPresetSelect();
@@ -404,6 +499,10 @@
     if (setText(r.label)) A.toast('Texto del registro ' + r.n + ' cargado; pulse «Extraer entidades»');
   };
   A.actions['ner-run'] = run;
+  A.actions['ner-batch-run'] = runBatch;
+  A.actions['ner-batch-cancel'] = () => { B.cancel = true; };
+  A.actions['ner-batch-csv'] = batchCsv;
+  A.actions['ner-batch-json'] = batchJson;
   A.actions['ner-check'] = checkHealth;
   A.actions['ner-export-csv'] = exportCsv;
   A.actions['ner-export-json'] = exportJson;
