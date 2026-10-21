@@ -564,6 +564,7 @@
       card(sim ? 'Latencia estimada' : 'Latencia medida', msN ? Math.round(msSum / msN) + ' ms' : '—', sim ? 'modelo determinista; no es una medición' : S.runInfo && S.runInfo.cacheHits ? 'por registro; incluye lecturas de caché' : 'por petición, incluye reintentos', 'font-mono') +
       card('Tokens', tokN ? (tin + tout).toLocaleString('es-ES') : !sim && S.runInfo && S.runInfo.cacheHits === R.length && R.length ? '0' : '—', tokN ? tin + ' entrada · ' + tout + ' salida' + (sim ? ' (estimados)' : '') : !sim && S.runInfo && S.runInfo.cacheHits ? 'sin nuevo consumo en resultados reutilizados' : 'no informados') +
       '<div class="bg-white border border-swiss-border p-4"><div class="text-[11px] font-mono uppercase text-swiss-grayDark font-semibold">Umbrales Noul</div><div class="flex items-center gap-1.5 mt-2 text-xs font-mono">NO ≤ <input type="number" id="noul-no" min="0" max="0.49" step="0.05" value="' + S.noulNo + '" class="w-14 border border-swiss-border px-1 py-0.5"> SÍ ≥ <input type="number" id="noul-yes" min="0.51" max="1" step="0.05" value="' + S.noulYes + '" class="w-14 border border-swiss-border px-1 py-0.5"></div><div class="text-[10px] font-mono text-swiss-grayDark mt-1">entre ambos: revisión humana</div></div>';
+    $('sim-warning').classList.toggle('hidden', !(R.length && sim));
     const nb = $('noul-review');
     nb.classList.toggle('hidden', !noulN);
     if (noulN) nb.textContent = noulReview + ' de ' + noulN + ' respuestas Noul caen en la zona de revisión (' + S.noulNo + ' < p < ' + S.noulYes + '). Con estos umbrales no deben automatizarse.';
@@ -590,6 +591,9 @@
 
   /* ───────────────────────── exportación ───────────────────────── */
 
+  /** Sufijo de los archivos exportados: deja claro en el propio nombre que proceden de la simulación. */
+  function simTag() { return S.runInfo && S.runInfo.mode === 'sim' ? '_SIMULACION' : ''; }
+
   function exportCsv() {
     if (!S.results.length) { toast('No hay resultados que exportar.'); return; }
     const wire = lastWire(); const d = $('export-delim').value || ';';
@@ -612,14 +616,14 @@
       v.push(!r.ok ? 'error' : (Object.keys(r.checks || {}).every((k) => r.checks[k].ok) ? 'coherente' : 'discrepancia'));
       lines.push(v.map((x) => csvCell(x, d)).join(d));
     });
-    download('jev_resultados.csv', 'text/csv;charset=utf-8', '\uFEFF' + lines.join('\r\n') + '\r\n');
+    download('jev_resultados' + simTag() + '.csv', 'text/csv;charset=utf-8', '\uFEFF' + lines.join('\r\n') + '\r\n');
     toast('CSV exportado (' + S.results.length + ' filas)');
   }
 
   function exportJson() {
     if (!S.results.length) { toast('No hay resultados que exportar.'); return; }
     const payload = { exported_at: new Date().toISOString(), engine: S.runInfo ? S.runInfo.mode : null, model: S.runInfo ? S.runInfo.model : null, noul_thresholds: { no: S.noulNo, yes: S.noulYes }, questions: lastWire(), results: S.results.map((r) => ({ row: r.n, state: r.state, ok: r.ok, error: r.error || null, answers: r.answers || null, checks: r.checks || null, usage: r.usage || null, latency_ms: r.ms === undefined ? null : r.ms, latency_is_estimate: !!r.simulated, reused_from_cache: !!r.cached, original_response_at: r.cachedAt ? new Date(r.cachedAt).toISOString() : null, trace: r.trace || null })) };
-    download('jev_resultados.json', 'application/json', JSON.stringify(payload, null, 2));
+    download('jev_resultados' + simTag() + '.json', 'application/json', JSON.stringify(payload, null, 2));
     toast('JSON exportado');
   }
 
