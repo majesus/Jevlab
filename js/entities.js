@@ -220,7 +220,7 @@
   function paintStatus() {
     const h = N.health || { state: 'noserver' }; const pill = $('ner-status'); const box = $('ner-setup');
     const map = {
-      starting: ['Iniciando GLiNER…', 'bg-yellow-100 border-yellow-500 text-yellow-900'],
+      starting: [h.data ? 'Iniciando GLiNER…' : 'Sin respuesta de GLiNER · reintentando…', 'bg-yellow-100 border-yellow-500 text-yellow-900'],
       ready: ['GLiNER disponible', 'bg-green-100 border-green-500 text-green-900'],
       noinstall: ['servicio activo · gliner2 sin instalar', 'bg-yellow-100 border-yellow-500 text-yellow-900'],
       down: ['servicio GLiNER apagado', 'bg-yellow-100 border-yellow-500 text-yellow-900'],
@@ -261,15 +261,16 @@
     return { labels: out, errors };
   }
 
-  async function callGliner(text, labels, threshold) {
-    const ctl = new AbortController(); const t = setTimeout(() => ctl.abort(), 190000);
+  async function callGliner(text, labels, threshold, timeoutMs) {
+    const limit = timeoutMs || 190000;
+    const ctl = new AbortController(); const t = setTimeout(() => ctl.abort(), limit);
     try {
       const r = await fetch('api/gliner', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ text, labels, threshold }), signal: ctl.signal, cache: 'no-store', credentials: 'same-origin' });
       const data = await r.json().catch(() => null);
       if (!r.ok || !data) throw new Error((data && (data.hint || data.error)) ? (data.error || '') + (data.hint ? ' ' + data.hint : '') : 'HTTP ' + r.status);
       return data;
     } catch (e) {
-      if (e && e.name === 'AbortError') throw new Error('Tiempo de espera agotado (190 s).');
+      if (e && e.name === 'AbortError') throw new Error('Tiempo de espera agotado (' + Math.round(limit / 1000) + ' s).');
       throw e;
     } finally { clearTimeout(t); }
   }
@@ -288,18 +289,28 @@
       let health = N.health; if (pref !== 'sim' && (!health || health.state !== 'ready')) health = await checkHealth();
       const useModel = pref === 'gliner' || (pref === 'auto' && health && health.state === 'ready');
       if (pref === 'gliner' && !(health && health.state === 'ready')) { A.banner('error', 'GLiNER local no está disponible (ver el estado del motor). Use «Automático» o «Simulación».'); return; }
-      let result;
+      let result = null; let fallbackNote = '';
       if (useModel) {
         const t0 = performance.now();
-        const data = await callGliner(text, labels, threshold);
-        let ents = Array.isArray(data.entities) ? data.entities : []; let dropped = data.dropped || 0;
-        if (data.offsets === 'codepoints') { const rec = NER.reconcileOffsets(text, ents); ents = rec.entities; dropped += rec.dropped.length; }
-        else { const ok = ents.filter((e) => Number.isInteger(e.start) && Number.isInteger(e.end) && text.slice(e.start, e.end) === e.text); dropped += ents.length - ok.length; ents = ok; }
-        result = { engine: 'gliner', model: data.model || 'gliner2', entities: ents.map((e) => ({ label: e.label, text: e.text, start: e.start, end: e.end, confidence: Number(e.confidence), source: 'GLiNER2' })), notes: dropped ? [dropped + ' entidades descartadas por no ser literales del texto o por tener posiciones inválidas.'] : [], threshold, ms: Math.round(performance.now() - t0), serverMs: data.elapsed_ms };
-      } else {
+        // En «Automático», si el modelo aún no está en memoria la primera extracción puede tardar minutos (descarga y carga): se espera solo unos segundos.
+        const waitMs = pref === 'auto' && !(health && health.data && health.data.model_loaded) ? 15000 : 190000;
+        try {
+          const data = await callGliner(text, labels, threshold, waitMs);
+          let ents = Array.isArray(data.entities) ? data.entities : []; let dropped = data.dropped || 0;
+          if (data.offsets === 'codepoints') { const rec = NER.reconcileOffsets(text, ents); ents = rec.entities; dropped += rec.dropped.length; }
+          else { const ok = ents.filter((e) => Number.isInteger(e.start) && Number.isInteger(e.end) && text.slice(e.start, e.end) === e.text); dropped += ents.length - ok.length; ents = ok; }
+          result = { engine: 'gliner', model: data.model || 'gliner2', entities: ents.map((e) => ({ label: e.label, text: e.text, start: e.start, end: e.end, confidence: Number(e.confidence), source: 'GLiNER2' })), notes: dropped ? [dropped + ' entidades descartadas por no ser literales del texto o por tener posiciones inválidas.'] : [], threshold, ms: Math.round(performance.now() - t0), serverMs: data.elapsed_ms };
+        } catch (e) {
+          if (pref !== 'auto') throw e;
+          const timedOut = e && /Tiempo de espera/.test(e.message || '');
+          fallbackNote = timedOut ? 'GLiNER aún está cargando el modelo (la primera vez puede tardar varios minutos): se usó la simulación léxica. Reintente más tarde con «Automático» o «GLiNER local».' : 'GLiNER falló (' + (e && e.message ? e.message : e) + '): se usó la simulación léxica.';
+          checkHealth();
+        }
+      }
+      if (!result) {
         const t0 = performance.now(); const r = NER.extract(text, labels, { threshold });
         result = Object.assign({}, r, { ms: Math.round(performance.now() - t0) });
-        if (pref === 'auto') result.notes.unshift('GLiNER local no disponible: se usó la simulación léxica (' + (N.health ? N.health.state : '—') + ').');
+        if (pref === 'auto') result.notes.unshift(fallbackNote || 'GLiNER local no disponible: se usó la simulación léxica (' + (N.health ? N.health.state : '—') + ').');
       }
       N.last = { text, labels, result }; render();
     } catch (e) { A.banner('error', 'Extracción fallida: ' + (e && e.message ? e.message : e)); } finally { N.busy = false; $('ner-run').disabled = false; $('ner-run').textContent = 'Extraer entidades'; }
