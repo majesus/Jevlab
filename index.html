@@ -1,0 +1,316 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <!-- Limita a dónde puede enviar datos la página (bloquea la exfiltración de la clave aunque se colase un XSS). Con el servidor
+       integrado, jev_server.py añade además una CSP estricta por cabecera HTTP (script-src 'self'). -->
+  <meta http-equiv="Content-Security-Policy" content="connect-src 'self'; img-src 'self' data:; object-src 'none'; base-uri 'none'; form-action 'none'">
+  <title>JEV · Banco de pruebas de System One</title>
+  <link rel="stylesheet" href="css/app.css">
+  <link rel="stylesheet" href="css/cache.css">
+</head>
+<body class="bg-[#F8F8F9] text-swiss-black font-sans min-h-screen flex flex-col antialiased selection:bg-swiss-red selection:text-white">
+
+  <!-- ===== CABECERA ===== -->
+  <header class="bg-white border-b border-swiss-border sticky top-0 z-40">
+    <div class="max-w-[1560px] mx-auto px-4 sm:px-6 lg:px-8 h-16 flex items-center justify-between gap-3">
+      <div class="flex items-center space-x-4 min-w-0">
+        <div class="w-8 h-8 bg-swiss-red flex items-center justify-center text-white font-black text-base shrink-0" aria-hidden="true">+</div>
+        <div class="min-w-0">
+          <div class="flex items-center space-x-2">
+            <span class="font-extrabold text-sm sm:text-base tracking-tight uppercase truncate">JEV // System One</span>
+            <span class="text-[10px] bg-black text-white px-1.5 py-0.5 font-mono uppercase tracking-widest font-semibold">Banco de pruebas</span>
+          </div>
+          <p id="app-subtitle" class="text-[10px] font-mono text-swiss-grayDark hidden sm:block tracking-tight uppercase">Clasificación con TypeSafe AI · Simulación sin API · Extracción de entidades con GLiNER</p>
+        </div>
+      </div>
+      <div class="flex items-center space-x-3 shrink-0">
+        <div id="mode-badge" class="px-2.5 py-1 bg-yellow-50 border border-yellow-300 text-yellow-900 text-xs font-mono flex items-center space-x-1.5" role="status">
+          <span id="mode-dot" class="w-2 h-2 rounded-full bg-yellow-500"></span>
+          <span id="mode-text" class="font-semibold uppercase tracking-wider text-[11px]">Simulación</span>
+        </div>
+        <button data-act="open-modal" data-modal="config-modal" class="px-3 py-1.5 border border-swiss-black hover:bg-swiss-black hover:text-white transition-colors text-xs font-mono font-medium">Configuración</button>
+        <button data-act="open-modal" data-modal="help-modal" class="px-3 py-1.5 bg-swiss-black text-white hover:bg-swiss-charcoal transition-colors text-xs font-mono font-medium">Ayuda</button>
+      </div>
+    </div>
+  </header>
+
+  <!-- ===== PESTAÑAS ===== -->
+  <div class="bg-white border-b border-swiss-border">
+    <div class="max-w-[1560px] mx-auto px-4 sm:px-6 lg:px-8 flex justify-between items-center gap-3">
+      <nav class="flex space-x-1 sm:space-x-6 -mb-px text-xs font-mono tracking-wider uppercase font-semibold overflow-x-auto" role="tablist" aria-label="Secciones">
+        <button role="tab" data-act="tab" data-tab="workspace" id="tab-btn-workspace" class="tab-btn py-3.5 px-2 whitespace-nowrap">1 · Definición</button>
+        <button role="tab" data-act="tab" data-tab="results" id="tab-btn-results" class="tab-btn py-3.5 px-2 whitespace-nowrap">2 · Resultados <span id="results-count" class="ml-1 bg-swiss-grayBg border border-swiss-border px-1.5 text-[10px]">0</span></button>
+        <button role="tab" data-act="tab" data-tab="entities" id="tab-btn-entities" class="tab-btn py-3.5 px-2 whitespace-nowrap">3 · Entidades (GLiNER)</button>
+        <button role="tab" data-act="tab" data-tab="lab" id="tab-btn-lab" class="tab-btn py-3.5 px-2 whitespace-nowrap">4 · Laboratorio de fórmulas</button>
+        <button role="tab" data-act="tab" data-tab="payload" id="tab-btn-payload" class="tab-btn py-3.5 px-2 whitespace-nowrap">5 · Protocolo</button>
+      </nav>
+      <div class="py-2 flex items-center gap-2 shrink-0">
+        <span id="run-progress" class="hidden text-xs font-mono text-swiss-grayDark"></span>
+        <button id="cancel-btn" data-act="cancel" class="hidden px-3 py-2 text-xs font-mono uppercase tracking-wider border border-swiss-black hover:bg-swiss-black hover:text-white">Cancelar</button>
+        <button id="run-btn" data-act="run" class="bg-swiss-red hover:bg-swiss-redHover disabled:opacity-50 text-white px-5 py-2 text-xs font-mono uppercase tracking-wider font-bold">Ejecutar clasificación</button>
+      </div>
+    </div>
+  </div>
+
+  <main class="flex-1 max-w-[1560px] w-full mx-auto px-4 sm:px-6 lg:px-8 py-6">
+    <div id="banner" class="hidden mb-4 border-l-4 p-3 text-xs font-mono" role="alert"></div>
+
+    <!-- ===== VISTA 1: DEFINICIÓN ===== -->
+    <div id="view-workspace" class="grid grid-cols-1 lg:grid-cols-12 gap-8">
+
+      <section class="lg:col-span-6 space-y-5" aria-labelledby="h-schema">
+        <div class="border-b-2 border-swiss-black pb-2 flex flex-wrap items-end justify-between gap-2">
+          <div>
+            <h2 id="h-schema" class="text-xl font-extrabold uppercase tracking-tight">Esquema de criterios</h2>
+            <p class="text-xs text-swiss-grayDark font-mono mt-0.5">Preguntas Choice, Score y Noul que recibirá cada registro</p>
+          </div>
+          <div class="flex flex-wrap items-center gap-2 text-xs font-mono">
+            <label for="preset-select" class="font-bold">Plantilla:</label>
+            <select id="preset-select" class="border border-swiss-border px-2 py-1 bg-white max-w-[15rem]"></select>
+            <button data-act="load-preset" class="px-2.5 py-1 border border-swiss-black hover:bg-swiss-black hover:text-white">Cargar</button>
+          </div>
+        </div>
+        <div class="space-y-2 text-xs font-mono border-t border-swiss-border pt-2">
+          <div class="grid items-center gap-2" style="grid-template-columns: auto minmax(0, 1fr) auto;">
+            <label for="def-tpl-name" class="font-bold">Mi plantilla:</label>
+            <input id="def-tpl-name" maxlength="60" placeholder="Nombre (p. ej. Opiniones sobre IA)" class="border border-swiss-border px-2 py-1 min-w-0 max-w-full" style="width: 100%;">
+            <button data-act="def-tpl-save" class="px-2.5 py-1 border border-swiss-black hover:bg-swiss-black hover:text-white">Guardar</button>
+          </div>
+          <div class="flex flex-wrap items-center gap-2">
+          <button id="def-tpl-delete" data-act="def-tpl-delete" class="px-2.5 py-1 border border-swiss-border hover:border-swiss-red hover:text-swiss-red">Eliminar la seleccionada</button>
+          <button data-act="def-tpl-export" class="px-2.5 py-1 border border-swiss-border hover:bg-swiss-grayBg">Exportar</button>
+          <button data-act="def-tpl-import" class="px-2.5 py-1 border border-swiss-border hover:bg-swiss-grayBg">Importar</button>
+          <input id="def-tpl-file" type="file" accept=".json,application/json" class="sr-only" tabindex="-1" aria-label="Importar plantillas de preguntas JSON">
+          </div>
+        </div>
+
+        <div id="schema-errors" class="hidden border-l-4 border-swiss-red bg-red-50 p-3 text-xs font-mono space-y-1" role="alert"></div>
+        <div id="questions-container" class="space-y-4"></div>
+
+        <div class="flex flex-wrap gap-2">
+          <button data-act="add-question" data-primitive="choice" class="px-2.5 py-1 text-xs font-mono border border-swiss-black hover:bg-swiss-black hover:text-white">+ Choice</button>
+          <button data-act="add-question" data-primitive="score" class="px-2.5 py-1 text-xs font-mono border border-swiss-black hover:bg-swiss-black hover:text-white">+ Score</button>
+          <button data-act="add-question" data-primitive="noul" class="px-2.5 py-1 text-xs font-mono border border-swiss-black hover:bg-swiss-black hover:text-white">+ Noul</button>
+        </div>
+      </section>
+
+      <section class="lg:col-span-6 space-y-5" aria-labelledby="h-input">
+        <div class="border-b-2 border-swiss-black pb-2 flex flex-wrap items-end justify-between gap-2">
+          <div>
+            <h2 id="h-input" class="text-xl font-extrabold uppercase tracking-tight">Contenido a clasificar</h2>
+            <p class="text-xs text-swiss-grayDark font-mono mt-0.5">Un texto o una tabla CSV/TSV (delimitador detectado automáticamente)</p>
+          </div>
+          <div class="flex border border-swiss-black text-xs font-mono">
+            <button id="mode-single-btn" data-act="input-mode" data-mode="single" class="px-3 py-1">Individual</button>
+            <button id="mode-batch-btn" data-act="input-mode" data-mode="batch" class="px-3 py-1">Lote CSV</button>
+          </div>
+        </div>
+
+        <div id="single-box" class="bg-white border border-swiss-border p-5 space-y-3">
+          <div class="flex justify-between items-center">
+            <label for="single-text" class="text-xs font-mono uppercase font-bold tracking-wider">Texto del registro (<code>state</code>)</label>
+            <span id="single-count" class="text-[11px] font-mono text-swiss-grayDark">0 caracteres</span>
+          </div>
+          <textarea id="single-text" rows="7" class="w-full font-mono text-xs p-3 border border-swiss-border focus:border-swiss-black focus:outline-none leading-relaxed resize-y" placeholder="Escriba o pegue el texto que desea clasificar…"></textarea>
+          <div class="flex justify-between items-center text-xs font-mono text-swiss-grayDark">
+            <span id="sample-hint"></span>
+            <button data-act="next-sample" class="hover:text-swiss-red underline">Cargar ejemplo de la plantilla</button>
+          </div>
+        </div>
+
+        <div id="batch-box" class="hidden bg-white border border-swiss-border p-5 space-y-3">
+          <div class="flex flex-wrap justify-between items-center gap-2">
+            <label for="batch-raw" class="text-xs font-mono uppercase font-bold tracking-wider">Tabla de registros</label>
+            <div class="flex items-center gap-2">
+              <button data-act="load-samples" class="px-2.5 py-1 text-xs font-mono border border-swiss-black hover:bg-swiss-black hover:text-white">Ejemplos de la plantilla</button>
+              <label class="cursor-pointer border border-swiss-black hover:bg-swiss-black hover:text-white px-2.5 py-1 text-xs font-mono">
+                Abrir archivo
+                <input type="file" id="csv-file" accept=".csv,.tsv,.txt" class="hidden">
+              </label>
+            </div>
+          </div>
+          <textarea id="batch-raw" rows="7" class="w-full font-mono text-xs p-3 border border-swiss-border focus:border-swiss-black focus:outline-none leading-relaxed" placeholder="id;texto&#10;1;Mi pedido no ha llegado…&#10;2;Quiero la factura de marzo…"></textarea>
+          <div class="bg-swiss-grayBg p-3 border border-swiss-border space-y-2 text-xs font-mono">
+            <div class="flex flex-wrap items-center gap-x-4 gap-y-2">
+              <label class="flex items-center gap-1.5"><input type="checkbox" id="batch-header" checked> Primera fila = cabecera</label>
+              <label class="flex items-center gap-1.5"><input type="checkbox" id="batch-object"> Enviar la fila completa como objeto</label>
+              <span class="flex items-center gap-1.5"><label for="batch-col" class="font-bold">Columna de texto:</label><select id="batch-col" class="border border-swiss-border px-2 py-1 bg-white max-w-[12rem]"></select></span>
+            </div>
+            <div id="batch-summary" class="text-swiss-grayDark">0 registros</div>
+          </div>
+        </div>
+
+        <div class="jev-cache-card" aria-label="Caché de clasificaciones Jev">
+          <div class="jev-cache-top">
+            <label class="jev-cache-label" for="jev-cache-enabled">
+              <input id="jev-cache-enabled" type="checkbox" role="switch" class="jev-cache-switch" checked aria-describedby="jev-cache-description">
+              <span>Reutilizar resultados anteriores</span>
+            </label>
+            <span class="jev-cache-tag">API JEV · 24 H</span>
+          </div>
+          <p id="jev-cache-description" class="jev-cache-description">Solo si coinciden el contenido, las preguntas y el modelo. Desactívelo para volver a consultar Jev.</p>
+          <div class="jev-cache-bottom">
+            <span id="jev-cache-status" role="status">Guardado en este navegador</span>
+            <button id="jev-cache-clear" data-act="jev-cache-clear" class="jev-cache-clear" type="button">Vaciar caché</button>
+          </div>
+          <p id="jev-cache-summary" class="jev-cache-summary hidden" role="status"></p>
+        </div>
+
+        <div class="bg-white border border-swiss-border p-5 space-y-3">
+          <div class="flex items-center justify-between border-b border-swiss-border pb-2">
+            <div class="flex items-center space-x-2"><div class="w-2.5 h-2.5 bg-swiss-red"></div><h3 class="text-xs font-mono uppercase tracking-wider font-bold">Vista previa del <code>state</code> enviado</h3></div>
+          </div>
+          <pre id="state-preview" class="font-mono text-xs bg-[#111111] text-[#E5E5EA] p-4 overflow-x-auto max-h-56 leading-relaxed whitespace-pre-wrap break-words"></pre>
+        </div>
+      </section>
+    </div>
+
+    <!-- ===== VISTA 2: RESULTADOS ===== -->
+    <div id="view-results" class="hidden space-y-6">
+      <div class="grid grid-cols-2 md:grid-cols-5 gap-4" id="metrics"></div>
+      <div id="noul-review" class="hidden border-l-4 border-yellow-500 bg-yellow-50 p-3 text-xs font-mono"></div>
+      <div class="bg-white border border-swiss-border overflow-hidden">
+        <div class="p-4 border-b border-swiss-border flex flex-wrap justify-between items-center gap-3">
+          <div class="flex items-center gap-3">
+            <h3 class="font-extrabold text-sm uppercase tracking-tight">Registro de clasificaciones</h3>
+            <span id="table-info" class="text-xs font-mono text-swiss-grayDark"></span>
+          </div>
+          <div class="flex flex-wrap items-center gap-2 text-xs font-mono">
+            <input type="search" id="result-search" placeholder="Buscar en los resultados…" class="border border-swiss-border px-3 py-1.5 w-56 focus:border-swiss-black focus:outline-none" aria-label="Buscar en los resultados">
+            <label for="export-delim" class="font-bold">CSV:</label>
+            <select id="export-delim" class="border border-swiss-border px-2 py-1 bg-white"><option value=";">punto y coma (Excel ES)</option><option value=",">coma</option><option value="&#9;">tabulador</option></select>
+            <button data-act="export-csv" class="px-2.5 py-1 border border-swiss-black hover:bg-swiss-black hover:text-white">Exportar CSV</button>
+            <button data-act="export-json" class="px-2.5 py-1 bg-swiss-black text-white hover:bg-swiss-charcoal">JSON completo</button>
+          </div>
+        </div>
+        <div class="overflow-x-auto">
+          <table class="w-full text-left text-xs border-collapse">
+            <thead><tr class="bg-swiss-grayBg border-b border-swiss-border font-mono text-[11px] uppercase tracking-wider">
+              <th class="p-3 w-12 text-center">#</th><th class="p-3 w-4/12">Entrada</th><th class="p-3">Resultados por primitiva</th><th class="p-3 w-28 text-right">Verificación</th>
+            </tr></thead>
+            <tbody id="results-body" class="divide-y divide-swiss-border"></tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+
+    <!-- ===== VISTA 3: ENTIDADES ===== -->
+    <div id="view-entities" class="hidden grid grid-cols-1 lg:grid-cols-12 gap-8">
+      <section class="lg:col-span-5 space-y-4" aria-labelledby="h-ner">
+        <div class="border-b-2 border-swiss-black pb-2">
+          <h2 id="h-ner" class="text-xl font-extrabold uppercase tracking-tight">Extracción de entidades</h2>
+          <p class="text-xs text-swiss-grayDark font-mono mt-0.5">GLiNER2 local (cero-disparo) o simulación léxica</p>
+        </div>
+        <div class="bg-white border border-swiss-border p-4 space-y-3 text-xs font-mono">
+          <div class="flex flex-wrap items-center justify-between gap-2">
+            <span class="font-bold uppercase tracking-wider">Motor</span>
+            <span id="ner-status" class="px-2 py-0.5 border border-swiss-border bg-swiss-grayBg">comprobando…</span>
+          </div>
+          <div class="flex flex-wrap gap-4">
+            <label class="flex items-center gap-1.5"><input type="radio" name="ner-engine" value="auto" checked> Automático</label>
+            <label class="flex items-center gap-1.5"><input type="radio" name="ner-engine" value="sim"> Simulación</label>
+            <label class="flex items-center gap-1.5"><input type="radio" name="ner-engine" value="gliner"> GLiNER local</label>
+          </div>
+          <div class="flex items-center gap-2"><label for="ner-threshold" class="font-bold">Umbral:</label><input type="range" id="ner-threshold" min="0.1" max="0.95" step="0.05" value="0.6" class="flex-1"><output id="ner-threshold-out" class="w-10 text-right">0.60</output></div>
+          <div class="flex flex-wrap items-center gap-2"><label for="ner-preset" class="font-bold">Plantilla:</label><select id="ner-preset" class="border border-swiss-border px-2 py-1 bg-white flex-1 min-w-0 max-w-full"></select><button data-act="ner-load-preset" class="px-2.5 py-1 border border-swiss-black hover:bg-swiss-black hover:text-white">Cargar</button></div>
+          <div class="space-y-1.5 border-t border-swiss-border pt-2"><div class="flex flex-wrap items-center gap-2"><label for="ner-tpl-name" class="font-bold">Mi plantilla:</label><input id="ner-tpl-name" maxlength="60" placeholder="Nombre (p. ej. Reseñas de restaurantes)" class="border border-swiss-border px-2 py-1 flex-1 min-w-0 max-w-full"><button data-act="ner-tpl-save" class="px-2.5 py-1 border border-swiss-black hover:bg-swiss-black hover:text-white">Guardar</button></div>
+            <div class="flex flex-wrap items-center gap-2"><button id="ner-tpl-delete" data-act="ner-tpl-delete" class="px-2.5 py-1 border border-swiss-border hover:border-swiss-red hover:text-swiss-red">Eliminar la seleccionada</button><button data-act="ner-tpl-export" class="px-2.5 py-1 border border-swiss-border hover:bg-swiss-grayBg">Exportar mis plantillas</button><button data-act="ner-tpl-import" class="px-2.5 py-1 border border-swiss-border hover:bg-swiss-grayBg">Importar</button><input id="ner-tpl-file" type="file" accept=".json,application/json" class="sr-only" tabindex="-1" aria-label="Importar plantillas JSON"></div>
+            <p class="text-[11px] text-swiss-grayDark leading-relaxed">Guarda las etiquetas actuales (y el texto, si no supera 5000 caracteres) en este navegador. Con «Exportar» obtiene un archivo JSON para compartirlo o conservarlo.</p></div>
+          <div id="ner-setup" class="hidden border-l-4 border-yellow-500 bg-yellow-50 p-2 leading-relaxed"></div>
+        </div>
+        <div class="bg-white border border-swiss-border p-4 space-y-2">
+          <div class="flex items-center justify-between"><h3 class="text-xs font-mono uppercase font-bold tracking-wider">Etiquetas</h3><button data-act="ner-add-label" class="px-2 py-0.5 text-xs font-mono border border-swiss-black hover:bg-swiss-black hover:text-white">+ Etiqueta</button></div>
+          <p class="text-[11px] font-mono text-swiss-grayDark">Nombre breve y descripción en inglés o español; incluya ejemplos («como X, Y, Z») para orientar al modelo.</p>
+          <div id="ner-labels" class="space-y-2"></div>
+        </div>
+      </section>
+      <section class="lg:col-span-7 space-y-4">
+        <div class="bg-white border border-swiss-border p-4 space-y-2">
+          <div class="flex flex-wrap items-center justify-between gap-2"><label for="ner-text" class="text-xs font-mono uppercase font-bold tracking-wider">Texto</label>
+          <div class="flex flex-wrap items-center gap-2 text-xs font-mono"><label for="ner-rec">registro nº</label><input id="ner-rec" type="number" min="1" value="1" class="w-16 border border-swiss-border px-1.5 py-1"><button data-act="ner-from-workspace" class="px-2.5 py-1 border border-swiss-black hover:bg-swiss-black hover:text-white">Usar el texto de «Definición»</button></div></div>
+          <textarea id="ner-text" rows="8" class="w-full font-mono text-xs p-3 border border-swiss-border focus:border-swiss-black focus:outline-none leading-relaxed resize-y"></textarea>
+          <div class="flex items-center justify-between"><span id="ner-count" class="text-[11px] font-mono text-swiss-grayDark"></span><button id="ner-run" data-act="ner-run" class="bg-swiss-red hover:bg-swiss-redHover disabled:opacity-50 text-white px-5 py-2 text-xs font-mono uppercase tracking-wider font-bold">Extraer entidades</button></div>
+        </div>
+        <div id="ner-result" class="hidden space-y-3"></div>
+      </section>
+    </div>
+
+    <!-- ===== VISTA 4: LABORATORIO ===== -->
+    <div id="view-lab" class="hidden space-y-6"></div>
+
+    <!-- ===== VISTA 5: PROTOCOLO ===== -->
+    <div id="view-payload" class="hidden grid grid-cols-1 lg:grid-cols-2 gap-6">
+      <div class="bg-white border border-swiss-border p-5 space-y-3">
+        <div class="flex items-center justify-between border-b border-swiss-border pb-2">
+          <h3 class="text-xs font-mono uppercase font-bold tracking-wider">Preguntas compiladas (<code>questions</code>)</h3>
+          <button data-act="copy" data-target="questions-json" class="text-xs font-mono border border-swiss-black px-2 py-0.5 hover:bg-swiss-black hover:text-white">Copiar</button>
+        </div>
+        <pre id="questions-json" class="font-mono text-xs bg-[#111111] text-[#E5E5EA] p-4 overflow-auto max-h-[28rem] whitespace-pre-wrap break-words"></pre>
+      </div>
+      <div class="bg-white border border-swiss-border p-5 space-y-3">
+        <div class="flex items-center justify-between border-b border-swiss-border pb-2">
+          <h3 class="text-xs font-mono uppercase font-bold tracking-wider">Cuerpo completo de <code>POST /v1/systemone</code> (primer registro)</h3>
+          <button data-act="copy" data-target="payload-json" class="text-xs font-mono border border-swiss-black px-2 py-0.5 hover:bg-swiss-black hover:text-white">Copiar</button>
+        </div>
+        <pre id="payload-json" class="font-mono text-xs bg-[#111111] text-[#E5E5EA] p-4 overflow-auto max-h-[28rem] whitespace-pre-wrap break-words"></pre>
+        <p class="text-[11px] font-mono text-swiss-grayDark">La clave de API nunca forma parte del cuerpo: viaja en la cabecera <code>Authorization: Bearer …</code> que añade <code>jev_server.py</code>.</p>
+      </div>
+    </div>
+  </main>
+
+  <!-- ===== MODAL: CONFIGURACIÓN ===== -->
+  <div id="config-modal" class="hidden fixed inset-0 z-50 bg-black/60 flex items-start justify-center p-4 overflow-y-auto" role="dialog" aria-modal="true" aria-labelledby="config-title">
+    <div class="bg-white w-full max-w-xl border border-swiss-black mt-10">
+      <div class="p-4 border-b border-swiss-border flex justify-between items-center"><h3 id="config-title" class="font-extrabold uppercase tracking-tight text-lg">Motor y API</h3><button data-act="close-modal" aria-label="Cerrar" class="font-mono text-lg font-bold hover:text-swiss-red">✕</button></div>
+      <div class="p-5 space-y-5">
+        <fieldset class="space-y-2">
+          <legend class="text-xs font-mono uppercase font-bold">Modo de ejecución</legend>
+          <div class="grid grid-cols-2 gap-3">
+            <label id="label-mode-sim" class="border-2 p-3 cursor-pointer flex flex-col"><input type="radio" name="exec-mode" value="sim" class="sr-only"><span class="font-mono text-xs font-bold uppercase">Simulación (sin API)</span><span class="text-[11px] text-swiss-grayDark mt-1">Motor determinista en el navegador que aplica las fórmulas oficiales y muestra su traza. Sin coste ni conexión.</span></label>
+            <label id="label-mode-live" class="border-2 p-3 cursor-pointer flex flex-col"><input type="radio" name="exec-mode" value="live" class="sr-only"><span class="font-mono text-xs font-bold uppercase">System One real</span><span class="text-[11px] text-swiss-grayDark mt-1">Consulta la API de TypeSafe a través del servidor local (<code>jev_server.py</code>). Requiere clave y Python.</span></label>
+          </div>
+        </fieldset>
+        <div id="live-fields" class="space-y-4 pt-2 border-t border-swiss-border">
+          <div>
+            <label for="api-key" class="text-xs font-mono uppercase font-bold block">Clave de API de TypeSafe</label>
+            <div class="mt-1 relative"><input type="password" id="api-key" autocomplete="off" spellcheck="false" placeholder="Opcional si el servidor ya la tiene (variable de entorno o config.local.json)" class="w-full font-mono text-xs p-2.5 pr-16 border border-swiss-border focus:border-swiss-black focus:outline-none"><button type="button" data-act="toggle-key" class="absolute right-2.5 top-2.5 text-xs font-mono text-swiss-grayDark hover:text-swiss-black">Mostrar</button></div>
+            <p class="text-[10px] font-mono text-swiss-grayDark mt-1">Se conserva en <code>sessionStorage</code> de esta pestaña. El navegador puede restaurar sesiones; borre la clave al terminar en un equipo compartido.</p>
+          </div>
+          <div>
+            <label for="model-select" class="text-xs font-mono uppercase font-bold block">Modelo</label>
+            <select id="model-select" class="mt-1 w-full font-mono text-xs p-2.5 border border-swiss-border bg-white">
+              <option value="jev-latest">jev-latest (alias estable)</option><option value="jev-preview">jev-preview (versión más reciente)</option><option value="jev-1.14.0">jev-1.14.0</option><option value="jev-1.13.0">jev-1.13.0</option>
+            </select>
+          </div>
+          <div id="proxy-status" class="text-[11px] font-mono text-swiss-grayDark"></div>
+        </div>
+      </div>
+      <div class="p-4 border-t border-swiss-border flex justify-end gap-2"><button data-act="close-modal" class="px-4 py-2 border border-swiss-border text-xs font-mono hover:bg-swiss-grayBg">Cancelar</button><button data-act="save-config" class="px-5 py-2 bg-swiss-black text-white text-xs font-mono uppercase tracking-wider font-bold hover:bg-swiss-charcoal">Guardar</button></div>
+    </div>
+  </div>
+
+  <!-- ===== MODAL: AYUDA ===== -->
+  <div id="help-modal" class="hidden fixed inset-0 z-50 bg-black/60 flex items-start justify-center p-4 overflow-y-auto" role="dialog" aria-modal="true" aria-labelledby="help-title">
+    <div class="bg-white w-full max-w-3xl border border-swiss-black mt-10">
+      <div class="p-4 border-b border-swiss-border flex justify-between items-center"><h3 id="help-title" class="font-extrabold uppercase tracking-tight text-lg">Ayuda, seguridad y límites</h3><button data-act="close-modal" aria-label="Cerrar" class="font-mono text-lg font-bold hover:text-swiss-red">✕</button></div>
+      <div class="p-5 space-y-4 text-xs leading-relaxed" id="help-body"></div>
+      <div class="p-4 border-t border-swiss-border flex justify-end"><button data-act="close-modal" class="px-4 py-1.5 bg-swiss-black text-white text-xs font-mono uppercase">Cerrar</button></div>
+    </div>
+  </div>
+
+  <div id="toast" class="fixed bottom-4 right-4 bg-swiss-black text-white px-4 py-2.5 font-mono text-xs shadow-xl border-l-4 border-swiss-red opacity-0 pointer-events-none transition-opacity z-[60]" role="status" aria-live="polite"></div>
+
+  <script src="js/formulas.js"></script>
+  <script src="js/lexicon.js"></script>
+  <script src="js/simulator.js"></script>
+  <script src="js/presets.js"></script>
+  <script src="js/gliner_sim.js"></script>
+  <script src="js/jev_cache.js"></script>
+  <script src="js/app.js"></script>
+  <script src="js/entities.js"></script>
+  <script src="js/lab.js"></script>
+  <script src="js/boot.js"></script>
+</body>
+</html>

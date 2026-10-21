@@ -1,0 +1,351 @@
+==============================================================================
+ JEV // SYSTEM ONE · BANCO DE PRUEBAS (v3, servidor Python)
+ Guía de uso: de cero a funcionando
+==============================================================================
+
+
+EMPEZAR CON GLiNER REAL · WINDOWS
+
+  1. Extraiga TODO el ZIP en una carpeta donde pueda guardar archivos
+     (por ejemplo, Documentos). No ejecute los archivos dentro del ZIP.
+  2. Instale Python 3.12 de 64 bits si todavía no lo tiene. Más abajo se
+     explica cómo hacerlo. Cierre y vuelva a abrir las ventanas después.
+  3. Ejecute INSTALAR_GLINER.bat UNA VEZ por ordenador y cuenta de usuario.
+     Necesita internet. Espere al mensaje "Instalacion y prueba correctas".
+     La instalación incluye una extracción con el modelo real: no basta
+     con que la ventana se abra o termine la descarga.
+  4. Ejecute INICIAR.bat y mantenga abierta su ventana.
+  5. Abra "3 · Entidades (GLiNER)" y seleccione "GLiNER local".
+     Si muestra "Iniciando GLiNER…", espere: se actualiza automáticamente.
+  6. Pulse "Extraer entidades". Sobre el resultado debe aparecer
+     "GLiNER2 · fastino/gliner2.5-base-v1" (o el modelo que haya elegido).
+     Con "GLiNER local", un fallo se muestra como error: no se simula.
+
+  Para las siguientes sesiones solo necesita INICIAR.bat.
+  No tiene que activar entornos virtuales ni escribir comandos para GLiNER.
+  GLiNER local no necesita una clave de TypeSafe ni una GPU dedicada.
+
+  Son DOS MOTORES INDEPENDIENTES:
+  - "1 · Definición" y "2 · Resultados": clasificación con Jev/TypeSafe
+    (API con clave personal, o simulación).
+  - "3 · Entidades": extracción con GLiNER local, o simulación léxica.
+  El rótulo "SIMULACIÓN" de la cabecera se refiere a la clasificación con
+  Jev. Puede aparecer mientras Entidades utiliza GLiNER real. Compruebe
+  el motor que figura SOBRE EL RESULTADO DE ENTIDADES.
+
+  ¿Puedo mover la carpeta? Sí: cierre INICIAR, mueva la carpeta completa
+  y abra INICIAR desde la nueva ubicación, con el mismo usuario y equipo.
+  GLiNER queda instalado fuera de ella, en una carpeta fija de su usuario.
+  Si cambia de ordenador o de cuenta, repita INSTALAR_GLINER en el destino.
+  Cambiar o desinstalar Python también puede exigir reparar la instalación.
+
+
+QUÉ ES
+
+Una consola web para enviar textos a Jev (el modelo de TypeSafe AI) y hacerle
+preguntas cerradas: elegir una categoría (Choice), puntuar en una escala
+ordinal (Score) o responder sí/no con probabilidad (Noul). Incluye además:
+
+  - SIMULACIÓN SIN API: un motor determinista que se ejecuta en el navegador,
+    aplica las fórmulas oficiales de confianza y muestra, para cada respuesta,
+    la traza del cálculo. Pensado para quien no dispone de clave de API.
+  - MÓDULO GLiNER: extracción de entidades (cero-disparo) con el modelo
+    GLiNER2, como en Atlas-Abstracts-USB, o con una simulación léxica si el
+    modelo no está instalado.
+  - LABORATORIO DE FÓRMULAS: calculadoras que reproducen, con los pasos a la
+    vista, las fórmulas de confianza de la documentación de TypeSafe.
+
+IMPORTANTE: los resultados de la SIMULACIÓN no proceden de Jev ni reproducen
+su criterio. Sirven para aprender el protocolo y ensayar esquemas.
+
+NOVEDAD DE LA v3: el servidor ya no usa PHP. Es un único archivo de Python
+(jev_server.py, sin instalar paquetes). Con Python instalado, un doble clic en
+INICIAR.bat lo arranca todo; desaparecen los pasos de PHP y curl.
+
+
+==============================================================================
+ CAMINO 1 · SOLO SIMULACIÓN (sin instalar nada, sin clave)
+==============================================================================
+
+  1. Haga doble clic en  index.html  (se abre en su navegador).
+  2. Pulse "Ejecutar clasificación". Pruebe las plantillas, el lote CSV,
+     el laboratorio de fórmulas y la pestaña Entidades (simulación léxica).
+
+  Funciona sin conexión a internet: la aplicación no descarga nada externo.
+  Es el único camino que no necesita Python.
+
+
+==============================================================================
+ CAMINO 2 · API REAL DE TYPESAFE (requiere Python y clave personal)
+==============================================================================
+
+PASO 1. Clave de API: https://console.typesafe.ai/keys (cada persona la suya;
+no la comparta ni la escriba en documentos compartidos).
+
+PASO 2. Instalar Python 3.8 o superior (solo una vez; basta con la
+instalación estándar, sin paquetes adicionales).
+
+  Windows 10/11:
+    a) Pulse la tecla Windows, escriba  powershell  y pulse Intro (ventana azul).
+    b) Pegue y pulse Intro:      winget install Python.Python.3.12
+       (si pregunta por acuerdos de origen, escriba S o Y y pulse Intro).
+    c) CIERRE esa ventana y ábrala de nuevo. Compruebe:      py -3 --version
+       Debe aparecer "Python 3.12.x". Si dice que "py no se reconoce",
+       reinicie el ordenador y repita la comprobación.
+    Alternativa sin winget: https://www.python.org/downloads/ (instalador de
+    Windows; marque "Add python.exe to PATH" y deje activado "py launcher").
+    Alternativa sin instalador: descomprima el "Windows embeddable package" de
+    python.org en una subcarpeta llamada  python  junto a INICIAR.bat; el
+    lanzador la usa sin tocar el PATH (no probado por el autor).
+
+  macOS:   brew install python     (o el instalador de python.org; con este
+           último, ejecute una vez "Install Certificates.command")
+  Linux:   sudo apt install python3
+
+PASO 3. Arrancar.
+  Windows:        doble clic en  INICIAR.bat
+  macOS / Linux:  sh iniciar.sh
+  Se abre el navegador en  http://localhost:8000 . Deje abierta la ventana
+  del servidor mientras use la aplicación (Ctrl+C o cerrarla la detiene).
+  Si el puerto 8000 está ocupado, el servidor usa el siguiente libre y muestra
+  la dirección en la ventana. Para fijar uno:  set JEV_PORT=8001  (Windows) o
+  JEV_PORT=8001 sh iniciar.sh .
+
+  Abra siempre la aplicación con esa dirección para usar la API real y
+  GLiNER. Con doble clic en index.html solo funciona la simulación.
+
+PASO 4. Configurar. Arriba a la derecha, "Configuración":
+  - Modo de ejecución: "System One real".
+  - Clave: péguela (se conserva en sessionStorage de esa pestaña).
+    Alternativa más segura: defina la variable de entorno TYPESAFE_API_KEY
+    antes de arrancar, o copie config.local.json.example como
+    config.local.json y edite la clave (no se publica por la red local).
+    Si el servidor tiene una clave definida, esa clave tiene prioridad sobre
+    la escrita en la consola.
+  - Modelo: jev-latest (estable).
+
+Diagnóstico rápido:   py -3 jev_server.py --check   (Windows)
+                      python3 jev_server.py --check (macOS / Linux)
+  Muestra la versión de Python, los certificados TLS, si hay clave en el
+  servidor, si hay proxy del sistema y si falta algún archivo. No muestra la clave.
+
+En equipos compartidos, borre la clave al terminar: el navegador puede
+restaurar sesiones.
+
+PRIVACIDAD: en modo real, los textos se envían a los servidores de TypeSafe.
+No incluya datos personales, de salud, de estudiantes ni información
+confidencial. En simulación y con GLiNER local, nada sale de su ordenador.
+
+
+==============================================================================
+ MÓDULO GLiNER (opcional)
+==============================================================================
+
+Sin instalar GLiNER, Entidades puede utilizar una simulación léxica que
+localiza patrones y ejemplos; sus resultados NO proceden del modelo GLiNER.
+
+INSTALACIÓN POR CADA ESTUDIANTE
+
+  Windows:       INSTALAR_GLINER.bat
+  macOS / Linux: sh instalar_gliner.sh (desde una terminal en esta carpeta)
+
+  Se recomienda Python 3.12; el instalador requiere como mínimo Python 3.10.
+  Necesita internet para descargar los paquetes y el modelo. La descarga
+  puede ocupar varios GB y tardar varios minutos, según el equipo y la red.
+  La instalación termina correctamente solo si las dependencias cargan y
+  la extracción de prueba con el modelo real devuelve entidades.
+  En equipos gestionados por el centro, pueden necesitar ayuda del soporte
+  para instalar Python o descargar los paquetes.
+
+  El entorno se crea FUERA de la carpeta de la aplicación:
+    Windows: %LOCALAPPDATA%\JEV\gliner_env
+    macOS:   ~/Library/Application Support/JEV/gliner_env
+    Linux:   ${XDG_DATA_HOME:-~/.local/share}/JEV/gliner_env
+  No es necesario localizar esa carpeta ni activarla a mano. El instalador
+  guarda su ruta en gliner_python.txt y el servidor sabe buscar también
+  la ubicación predeterminada del usuario. No se usan rutas del profesor.
+
+USO Y COMPROBACIÓN
+
+  Abra INICIAR.bat (Windows) o sh iniciar.sh (macOS/Linux).
+  Si la aplicación estaba abierta durante la instalación, cierre INICIAR
+  y ábralo de nuevo. Entre en Entidades y espere a "GLiNER disponible".
+  La página reintenta sola durante un máximo de dos minutos al arrancar.
+  La primera extracción carga el modelo en memoria y puede tardar más que
+  las siguientes. Mantenga abierta la ventana del servidor.
+
+  Elija el motor según el objetivo:
+    GLiNER local: exige el modelo real; si falla, muestra un error.
+    Automático: usa GLiNER cuando está disponible; si no, puede simular.
+    Simulación: usa siempre reglas léxicas, sin cargar el modelo real.
+
+  "GLiNER disponible" confirma que el servicio responde. La comprobación
+  final es extraer un texto y ver "GLiNER2 · [nombre del modelo]" sobre el
+  resultado. Si aparece "simulación", esa extracción no usó GLiNER real.
+  Para una actividad que requiera IA real, seleccione "GLiNER local".
+
+MOVER LA CARPETA Y TRABAJAR SIN CONEXIÓN
+
+  Mismo equipo y usuario: cierre INICIAR, mueva la carpeta COMPLETA a otra
+  ubicación donde pueda guardar archivos y arranque desde allí. No tiene
+  que reinstalar GLiNER solo por mover los archivos de la aplicación.
+  No mueva el entorno externo ni la instalación de Python.
+  Otro equipo o usuario: extraiga la carpeta y ejecute el instalador allí.
+  Copiar el entorno del profesor no sustituye ese paso.
+
+  Las plantillas guardadas en el navegador dependen de la dirección y el
+  puerto, no de la carpeta: use Exportar/Importar para trasladarlas.
+  No abra varias copias de INICIAR a la vez; cierre la anterior primero.
+
+  Para disponer de una copia explícita del modelo y evitar consultas de
+  descarga a Hugging Face, puede indicar la ruta de su carpeta en la primera
+  línea útil de gliner_model.txt, o definir GLINER2_MODEL. Si mueve también
+  esa carpeta del modelo, actualice la ruta. No basta con que GLiNER esté
+  instalado para garantizar que todos los archivos del modelo estén locales.
+  Los textos de la extracción se procesan en el ordenador.
+
+CONFIGURACIÓN AVANZADA
+
+  Opciones avanzadas: JEV_GLINER_ENV permite elegir otra ubicación para el
+  entorno y JEV_GLINER_PYTHON permite indicar su intérprete. No hacen falta
+  para el uso habitual. JEV_GLINER_AUTOSTART=0 desactiva el arranque del motor.
+
+
+==============================================================================
+ USO
+==============================================================================
+
+  CACHÉ DE CLASIFICACIONES CON LA API JEV
+    En «Contenido a clasificar» encontrará «Reutilizar resultados anteriores».
+    Se reutilizan solo coincidencias exactas de contenido, preguntas y modelo,
+    con la misma clave del navegador. Cambiar las instrucciones, las opciones,
+    el texto o el modelo exige una consulta nueva. La caché empieza a guardar
+    respuestas a partir de esta versión; no recupera ejecuciones antiguas.
+    Conserva respuestas verificadas durante 24 horas en este navegador,
+    incluso al recargar la página (hasta 500 entradas y unos 2 MB).
+    No guarda el texto de entrada ni la clave en la caché: utiliza una huella
+    de la petición para reconocerla. Las respuestas sí quedan guardadas.
+    Si el navegador bloquea el almacenamiento, se conserva solo en la pestaña
+    y el indicador lo avisa. Cada dirección y puerto tiene su propia caché.
+    En un lote, las filas idénticas comparten consulta, sin eliminar filas.
+    Desactive el interruptor para volver a consultar Jev; la respuesta nueva
+    sustituye a la anterior. «Vaciar caché» borra las respuestas guardadas.
+    Los resultados y las exportaciones indican qué se ha reutilizado.
+    El resumen cuenta las consultas enviadas (incluidos los reintentos);
+    los tokens de respuestas reutilizadas no cuentan como consumo nuevo.
+    No afecta a la simulación ni al módulo GLiNER.
+
+  1 · Definición
+    - Izquierda: las PREGUNTAS. Cargue una plantilla o cree las suyas con
+      "+ Choice", "+ Score", "+ Noul". Límites de la API que se validan:
+      Choice hasta 255 opciones; Score de 2 a 10 niveles; identificadores
+      de 1-64 caracteres (A-Z, a-z, 0-9, _ y -).
+    - Derecha: el TEXTO. "Individual" o "Lote CSV" (delimitador coma, punto y
+      coma o tabulador detectado solo; codificación UTF-8 o Windows-1252).
+      Máximo 5000 registros en simulación y 500 en modo real.
+  2 · Resultados: decisión, probabilidades, confianza y verificación de cada
+    respuesta contra las fórmulas; traza del cálculo en simulación;
+    exportación a CSV (separador a elegir; decimales con coma si es ";") y JSON.
+    Noul: los umbrales NO/SÍ son editables; entre ambos, "REVISAR".
+  3 · Entidades (GLiNER)   4 · Laboratorio de fórmulas   5 · Protocolo
+    (lo que se envía exactamente a TypeSafe).
+
+  Mismo texto en Jev y en GLiNER: la pestaña Entidades tiene su propio cuadro
+  de texto, pero se rellena con el de la clasificación de dos maneras:
+    - botón "Usar el texto de «Definición»" (con el número de registro, si
+      es un lote CSV), o
+    - botón "→ extraer entidades de este texto" bajo cada fila de Resultados.
+  El texto se copia: editarlo en Entidades no altera la clasificación.
+
+  Etiquetas acordes con la plantilla: al elegir una plantilla en «Definición»
+  y abrir la pestaña Entidades, las etiquetas se ajustan a ella (turismo,
+  soporte, finanzas, docencia, general). En Entidades, elegir otra plantilla
+  aplica sus etiquetas al instante. Si usted ha editado las etiquetas a mano,
+  no se sobrescriben: elija la plantilla en esa pestaña para sustituirlas.
+  El texto de la pestaña solo se reemplaza por el ejemplo si estaba vacío o
+  si aún era el ejemplo anterior.
+
+  Plantillas propias (pestaña Entidades): defina sus etiquetas, escriba un
+  nombre en «Mi plantilla» y pulse «Guardar». Se conservan en este navegador,
+  aparecen en el grupo «Mis plantillas» de la lista y pueden eliminarse.
+  «Exportar mis plantillas» genera un JSON para compartir con otras personas;
+  «Importar» lo carga (las entradas inválidas se descartan y se avisa).
+
+  Plantillas propias de preguntas (pestaña Definición): configure las
+  preguntas y el texto, escriba un nombre en «Mi plantilla» (encima de las
+  preguntas) y pulse «Guardar». Aparece en «Mis
+  plantillas» de la lista «Plantilla»; para recuperarla, selecciónela y
+  pulse «Cargar». Se guardan el esquema completo y, como ejemplos, el texto
+  individual o hasta 20 registros del lote (cada uno de 5000 caracteres como
+  máximo). Solo se guardan esquemas válidos. Exportar/Importar funcionan como
+  en Entidades. Las plantillas se guardan en el navegador y cada dirección
+  (http://localhost:8000, http://localhost:8001, 127.0.0.1 o index.html como
+  archivo; el puerto cuenta) tiene su propio almacén: abra siempre la misma
+  dirección, o use Exportar/Importar para pasar plantillas de una a otra.
+
+
+==============================================================================
+ SI ALGO FALLA
+==============================================================================
+
+  La ventana negra se abre y se cierra sola
+      Ábrala desde PowerShell para leer el mensaje:
+         cd "RUTA\DE\ESTA\CARPETA"
+         cmd /k INICIAR.bat
+      (INICIAR.bat termina con una pausa para que el mensaje se vea.)
+      Como alternativa, desde esa carpeta:   py -3 jev_server.py --open
+  "No se encontro Python 3"
+      Instálelo (Paso 2), CIERRE la ventana y vuelva a abrir INICIAR.bat.
+      Si ya lo instaló y sigue fallando, reinicie el ordenador.
+  Windows abre la Microsoft Store al ejecutar INICIAR.bat o "python"
+      Es el alias de ejecución de la Store, que no es Python. Instale Python
+      (Paso 2) o desactive el alias en Configuración > Aplicaciones >
+      Configuración avanzada de aplicaciones > Alias de ejecución de aplicaciones.
+  "Se necesita Python 3.8 o superior"
+      Instale una versión más reciente (winget install Python.Python.3.12).
+  "Windows protegió su PC"
+      Pulse "Más información" y después "Ejecutar de todas formas". Si el
+      Firewall pregunta, puede pulsar "Cancelar": solo se usa su ordenador.
+  "No se pudo abrir el puerto ..."
+      Solo ocurre si fijó el puerto con JEV_PORT y está ocupado. Cambie el
+      número (set JEV_PORT=8001) o quite la variable (set JEV_PORT=).
+  "Sin conexión con el servidor local" / "La página se abrió como archivo"
+      Arranque con INICIAR y use la dirección que muestra la ventana
+      (normalmente http://localhost:8000).
+  "No se pudo verificar el certificado TLS de TypeSafe"
+      Suele deberse a un proxy o antivirus que inspecciona el tráfico HTTPS:
+      exporte su certificado raíz (formato PEM) e indíquelo con
+      set TYPESAFE_CA_BUNDLE=C:\ruta\certificado.pem antes de INICIAR.
+      En macOS con Python de python.org ejecute "Install Certificates.command".
+      No se desactiva nunca la verificación TLS.
+  Conexión a través de un proxy corporativo
+      El servidor usa el proxy del sistema (variables HTTPS_PROXY / NO_PROXY o,
+      en Windows, la configuración de Windows). py -3 jev_server.py --check
+      indica cuál detecta.
+  "HTTP 401"        Clave ausente, incorrecta o revocada.
+  "HTTP 429 / 529"  La aplicación reintenta sola (hasta 4 veces, con espera
+                    creciente y respetando Retry-After); si persiste, espere.
+  "Servicio GLiNER apagado"
+      Durante el arranque verá "Iniciando GLiNER…": espere, la página se
+      actualiza sola. Si tras dos minutos sigue fallando, cierre INICIAR,
+      ejecute INSTALAR_GLINER y revise el error que indique. Arranque de nuevo.
+      El registro técnico del servicio está en gliner_service.log.
+  Se ve una versión antigua: Ctrl+F5.
+
+
+==============================================================================
+ SEGURIDAD EN RESUMEN
+==============================================================================
+
+  - La distribución no incluye claves. Cada usuario configura la suya.
+  - El servidor escucha solo en 127.0.0.1; comprueba Host, Origin y
+    Sec-Fetch-Site, limita las peticiones por IP y no concede CORS.
+  - Solo se publican index.html, los recursos de js/ y css/ y los dos puntos
+    de acceso /api/systemone y /api/gliner. config.local.json, los scripts,
+    los registros y los modelos no son accesibles.
+  - No ejecute la aplicación en un servidor público sin añadir autenticación:
+    es de uso local (variables JEV_BIND y JEV_ALLOWED_HOSTS existen para
+    despliegues controlados, que requieren además HTTPS).
+  - Si cree que su clave se ha expuesto, revóquela en la consola de TypeSafe.
+
+Inicio rápido y descarga: consulte README.md.

@@ -1,0 +1,38 @@
+# Credenciales y configuración privada
+.env
+.env.*
+!.env.example
+config.local.json
+config.local.*.json
+*.pem
+*.key
+*.p12
+*.pfx
+
+# Rutas y modelos de cada equipo
+gliner_python.txt
+gliner_model.txt
+models/
+.cache/
+.huggingface/
+python/
+.venv*/
+venv/
+gliner_env/
+
+# Archivos generados y registros
+__pycache__/
+*.py[cod]
+*.log
+*.tmp
+*.bak
+*.zip
+.DS_Store
+Thumbs.db
+desktop.ini
+.idea/
+.vscode/
+
+# Documentación interna de revisión
+AUDITORIA.md
+CAMBIOS_DISTRIBUCION.txt
