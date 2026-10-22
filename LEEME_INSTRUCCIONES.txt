@@ -204,6 +204,13 @@ MOVER LA CARPETA Y TRABAJAR SIN CONEXIÓN
   instalado para garantizar que todos los archivos del modelo estén locales.
   Los textos de la extracción se procesan en el ordenador.
 
+  Modelo inglés o multilingüe: las plantillas están en inglés. En la pestaña
+  «Entidades», el selector «Modelo GLiNER» permite elegir el modelo inglés
+  (GLiNER2.5, por defecto) o el multilingüe (fastino/gliner2-multi-v1), útil
+  para textos en castellano. Para una copia local del multilingüe, escriba su
+  ruta en la primera línea útil de gliner_model_multi.txt o defina
+  GLINER2_MODEL_MULTI.
+
 CONFIGURACIÓN AVANZADA
 
   Opciones avanzadas: JEV_GLINER_ENV permite elegir otra ubicación para el

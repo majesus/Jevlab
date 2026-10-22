@@ -12,6 +12,7 @@ config.local.*.json
 # Rutas y modelos de cada equipo
 gliner_python.txt
 gliner_model.txt
+gliner_model_multi.txt
 models/
 .cache/
 .huggingface/

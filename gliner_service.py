@@ -3,16 +3,24 @@
 
     python gliner_service.py              # arranca en http://127.0.0.1:8765
     python gliner_service.py --check      # diagnostica el entorno sin cargar el modelo
-    python gliner_service.py --selftest   # carga el modelo y extrae entidades de un texto de prueba
+    python gliner_service.py --selftest   # carga el modelo inglés y extrae entidades de un texto de prueba
+    python gliner_service.py --selftest --multi   # ídem con el modelo multilingüe
     python gliner_service.py --watch-parent   # (lo usa jev_server.py) termina cuando el proceso padre cierra la entrada estándar
 
 Solo escucha en 127.0.0.1. La aplicación web no lo llama directamente: lo hace a través de jev_server.py (/api/gliner, mismo origen).
 
-Modelo (por orden de prioridad):
-  1. variable de entorno GLINER2_MODEL (ruta a una carpeta o identificador de Hugging Face)
-  2. primera línea útil de gliner_model.txt: ruta a una carpeta con el modelo (p. ej. la de Atlas-Abstracts-USB); se ignoran las líneas vacías y las que empiezan por #
-  3. ./models/gliner2.5-base-v1 si existe
-  4. fastino/gliner2.5-base-v1 (se descarga la primera vez; requiere internet)
+Modelos (el cliente elige con el campo "model" de la petición; por defecto "en"):
+  "en"    GLiNER2.5 inglés. Por orden de prioridad:
+            1. variable de entorno GLINER2_MODEL (ruta a una carpeta o identificador de Hugging Face)
+            2. primera línea útil de gliner_model.txt: ruta a una carpeta con el modelo (p. ej. la de Atlas-Abstracts-USB); se ignoran las líneas vacías y las que empiezan por #
+            3. ./models/gliner2.5-base-v1 si existe
+            4. fastino/gliner2.5-base-v1 (se descarga la primera vez; requiere internet)
+  "multi" GLiNER2 multilingüe (para textos en castellano u otros idiomas). Por orden de prioridad:
+            1. variable de entorno GLINER2_MODEL_MULTI
+            2. primera línea útil de gliner_model_multi.txt (misma convención que gliner_model.txt)
+            3. ./models/gliner2-multi-v1 si existe
+            4. fastino/gliner2-multi-v1 (se descarga la primera vez; requiere internet)
+Cada modelo se carga de forma perezosa en la primera petición que lo pide y permanece en memoria.
 
 Mismo contrato de integridad que Atlas: no se fabrican desplazamientos. Cada entidad se comprueba contra el texto original y
 se descarta si text[start:end] no coincide con el literal devuelto por el modelo.
@@ -36,6 +44,9 @@ try:
 except ValueError:
     PORT = 8765
 DEFAULT_MODEL = "fastino/gliner2.5-base-v1"
+DEFAULT_MODEL_MULTI = "fastino/gliner2-multi-v1"
+MODEL_KEYS = ("en", "multi")
+DEFAULT_MODEL_KEY = "en"
 MAX_BODY_BYTES = 1_048_576      # 1 MiB
 MAX_TEXT_CHARS = 100_000
 MAX_LABELS = 30
@@ -51,9 +62,10 @@ SELFTEST_LABELS = {
     "muestra": "Explicit numeric sample size and sampled unit, such as 410 respondents.",
 }
 
-_model = None
+_models: dict = {}
+_load_errors: dict = {}
 _extractor_class = None
-_model_lock = threading.Lock()
+_model_lock = threading.RLock()
 _load_error: str | None = None
 
 
@@ -64,19 +76,37 @@ def default_threshold() -> float:
         return 0.60
 
 
-def resolve_model() -> str:
-    env = os.getenv("GLINER2_MODEL", "").strip()
-    if env:
-        return env
-    pointer = BASE / "gliner_model.txt"
+def _pointer_line(pointer: Path) -> str:
+    """Primera línea útil de un archivo de puntero (ignora vacías y comentarios)."""
     if pointer.is_file():
         try:
             for raw in pointer.read_text(encoding="utf-8-sig").splitlines():
                 line = raw.strip().strip('"')
-                if line and not line.startswith("#"):  # se ignoran líneas vacías y comentarios
+                if line and not line.startswith("#"):
                     return line
         except OSError:
             pass
+    return ""
+
+
+def resolve_model(key: str = DEFAULT_MODEL_KEY) -> str:
+    if key == "multi":
+        env = os.getenv("GLINER2_MODEL_MULTI", "").strip()
+        if env:
+            return env
+        line = _pointer_line(BASE / "gliner_model_multi.txt")
+        if line:
+            return line
+        local = BASE / "models" / "gliner2-multi-v1"
+        if (local / "config.json").is_file():
+            return str(local)
+        return DEFAULT_MODEL_MULTI
+    env = os.getenv("GLINER2_MODEL", "").strip()
+    if env:
+        return env
+    line = _pointer_line(BASE / "gliner_model.txt")
+    if line:
+        return line
     local = BASE / "models" / "gliner2.5-base-v1"
     if (local / "config.json").is_file():
         return str(local)
@@ -94,13 +124,13 @@ def gliner_installed() -> bool:
         return False
 
 
-def get_model():
-    """Carga perezosa y serializada. Con una carpeta local se fuerza el modo sin conexión a Hugging Face."""
-    global _model, _load_error
+def get_model(key: str = DEFAULT_MODEL_KEY):
+    """Carga perezosa y serializada por modelo. Con una carpeta local se fuerza el modo sin conexión a Hugging Face."""
+    global _load_error
     with _model_lock:
-        if _model is not None:
-            return _model
-        name = resolve_model()
+        if key in _models:
+            return _models[key]
+        name = resolve_model(key)
         if model_is_local(name):
             os.environ.setdefault("HF_HUB_OFFLINE", "1")
             os.environ.setdefault("TRANSFORMERS_OFFLINE", "1")
@@ -111,20 +141,24 @@ def get_model():
         warnings.filterwarnings("ignore", message=r".*torch\.jit\.script.*is deprecated.*", category=FutureWarning)
         warnings.filterwarnings("ignore", message=r".*Encoder rejected attn_implementation.*", category=RuntimeWarning)
         t0 = time.perf_counter()
-        print(f"GLiNER2: cargando modelo {name} (primera carga; puede tardar)…", flush=True)
+        print(f"GLiNER2: cargando modelo [{key}] {name} (primera carga; puede tardar)…", flush=True)
         try:
             if _extractor_class is None:
                 from gliner2 import AutoExtractor
                 cls = AutoExtractor
             else:
                 cls = _extractor_class
-            _model = cls.from_pretrained(name)
+            _models[key] = cls.from_pretrained(name)
         except Exception as exc:  # noqa: BLE001 — se informa al cliente, no se oculta
-            _load_error = f"{type(exc).__name__}: {exc}"[:400]
+            _load_errors[key] = f"{type(exc).__name__}: {exc}"[:400]
+            if key == DEFAULT_MODEL_KEY:
+                _load_error = _load_errors[key]
             raise
-        _load_error = None
-        print(f"GLiNER2: modelo cargado ({time.perf_counter() - t0:.1f} s)", flush=True)
-        return _model
+        _load_errors.pop(key, None)
+        if key == DEFAULT_MODEL_KEY:
+            _load_error = None
+        print(f"GLiNER2: modelo [{key}] cargado ({time.perf_counter() - t0:.1f} s)", flush=True)
+        return _models[key]
 
 
 def health() -> dict:
@@ -136,8 +170,11 @@ def health() -> dict:
         "runtime_ready": _extractor_class is not None,
         "model": name,
         "model_is_local": model_is_local(name),
-        "model_loaded": _model is not None,
+        "model_loaded": DEFAULT_MODEL_KEY in _models,
         "load_error": _load_error,
+        "default_model_key": DEFAULT_MODEL_KEY,
+        "models": {k: {"model": resolve_model(k), "model_is_local": model_is_local(resolve_model(k)),
+                       "loaded": k in _models, "load_error": _load_errors.get(k)} for k in MODEL_KEYS},
         "python": sys.version.split()[0],
         "default_threshold": default_threshold(),
     }
@@ -169,6 +206,15 @@ def validate_request(payload) -> tuple[str, dict[str, str], float]:
     if isinstance(threshold, bool) or not isinstance(threshold, (int, float)) or not (0.0 <= float(threshold) <= 1.0):
         raise ValueError("'threshold' debe ser un número entre 0 y 1.")
     return text, clean, float(threshold)
+
+
+def requested_model_key(payload) -> str:
+    key = payload.get("model", DEFAULT_MODEL_KEY) if isinstance(payload, dict) else DEFAULT_MODEL_KEY
+    if key is None:
+        key = DEFAULT_MODEL_KEY
+    if not isinstance(key, str) or key not in MODEL_KEYS:
+        raise ValueError("'model' debe ser uno de: " + ", ".join(MODEL_KEYS) + ".")
+    return key
 
 
 def run_extraction(extractor, text: str, labels: dict[str, str], threshold: float) -> tuple[list[dict], int]:
@@ -263,7 +309,9 @@ class Handler(BaseHTTPRequestHandler):
             return self._send(413, {"error": "Cuerpo demasiado grande."})
         raw = self.rfile.read(length)
         try:
-            text, labels, threshold = validate_request(json.loads(raw.decode("utf-8")))
+            payload = json.loads(raw.decode("utf-8"))
+            text, labels, threshold = validate_request(payload)
+            model_key = requested_model_key(payload)
         except (ValueError, UnicodeDecodeError) as exc:  # json.JSONDecodeError es subclase de ValueError
             return self._send(422, {"error": str(exc) if not isinstance(exc, UnicodeDecodeError) else "El cuerpo no es UTF-8 válido."})
         if not gliner_installed():
@@ -275,13 +323,13 @@ class Handler(BaseHTTPRequestHandler):
                                     "hint": "Revise la instalación con gliner_service.py --check y reinicie el servicio."})
         t0 = time.perf_counter()
         try:
-            extractor = get_model()
+            extractor = get_model(model_key)
             with _model_lock:  # inferencia serializada
                 entities, dropped = run_extraction(extractor, text, labels, threshold)
         except Exception as exc:  # noqa: BLE001
             msg = f"{type(exc).__name__}: {exc}"[:400]
             return self._send(500, {"error": "Fallo al cargar o ejecutar el modelo GLiNER2.", "detail": msg})
-        self._send(200, {"engine": "gliner2-local", "model": resolve_model(), "entities": entities, "dropped": dropped,
+        self._send(200, {"engine": "gliner2-local", "model": resolve_model(model_key), "model_key": model_key, "entities": entities, "dropped": dropped,
                          "elapsed_ms": int((time.perf_counter() - t0) * 1000), "chars": len(text), "threshold": threshold,
                          "offsets": "codepoints"})
 
@@ -290,15 +338,16 @@ def cmd_check() -> int:
     print(f"Python {sys.version.split()[0]} ({sys.executable})")
     ok = gliner_installed()
     print("gliner2:", "instalado" if ok else 'NO instalado → pip install "gliner2[local]"')
-    name = resolve_model()
-    print("Modelo:", name)
-    if model_is_local(name):
-        p = Path(name)
-        weights = sorted(p.glob("*.safetensors")) + sorted(p.glob("*.bin"))
-        print("  carpeta local:", "OK" if (p / "config.json").is_file() else "FALTA config.json")
-        print("  pesos:", ", ".join(f"{w.name} ({w.stat().st_size / 1e6:.0f} MB)" for w in weights) or "NO encontrados")
-    else:
-        print("  se descargará de Hugging Face la primera vez (requiere internet; son varios cientos de MB)")
+    for key in MODEL_KEYS:
+        name = resolve_model(key)
+        print(f"Modelo [{key}]:", name)
+        if model_is_local(name):
+            p = Path(name)
+            weights = sorted(p.glob("*.safetensors")) + sorted(p.glob("*.bin"))
+            print("  carpeta local:", "OK" if (p / "config.json").is_file() else "FALTA config.json")
+            print("  pesos:", ", ".join(f"{w.name} ({w.stat().st_size / 1e6:.0f} MB)" for w in weights) or "NO encontrados")
+        else:
+            print("  se descargará de Hugging Face la primera vez (requiere internet; son varios cientos de MB)")
     try:
         import torch  # noqa: F401
         print("torch:", torch.__version__)
@@ -315,12 +364,12 @@ def cmd_check() -> int:
     return 0 if ok else 1
 
 
-def cmd_selftest() -> int:
+def cmd_selftest(key: str = DEFAULT_MODEL_KEY) -> int:
     if not gliner_installed():
         print('gliner2 no está instalado. Ejecute: pip install "gliner2[local]"')
         return 1
     t0 = time.perf_counter()
-    ents, dropped = run_extraction(get_model(), SELFTEST_TEXT, SELFTEST_LABELS, default_threshold())
+    ents, dropped = run_extraction(get_model(key), SELFTEST_TEXT, SELFTEST_LABELS, default_threshold())
     print(f"\n{len(ents)} entidades verificadas ({dropped} descartadas) en {time.perf_counter() - t0:.1f} s:")
     for e in ents:
         print(f"  {e['label']:<18} {e['text']!r:<28} [{e['start']},{e['end']}]  conf={e['confidence']}")
@@ -335,7 +384,7 @@ def main(argv: list[str]) -> int:
     if "--check" in argv:
         return cmd_check()
     if "--selftest" in argv:
-        return cmd_selftest()
+        return cmd_selftest("multi" if "--multi" in argv else DEFAULT_MODEL_KEY)
     # NumPy/PyTorch deben inicializar sus DLL en el hilo principal. Su primera
     # importación desde un hilo HTTP se bloqueaba en Windows al cargar NumPy.
     # Esta fase importa dependencias, pero deja los pesos del modelo para la

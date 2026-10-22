@@ -242,7 +242,8 @@
     if (h.state === 'ready' && h.data) {
       const d = h.data;
       box.classList.remove('hidden');
-      box.innerHTML = 'Modelo: <code>' + esc(d.model) + '</code> · ' + (d.model_loaded ? 'cargado en memoria' : 'se cargará en la primera extracción (puede tardar 1–2 minutos)') + (d.load_error ? ' · <strong>error de carga: ' + esc(d.load_error) + '</strong>' : '') + ' · <button data-act="ner-check" class="underline">Comprobar</button>';
+      const mi = modelInfo(d); const mName = mi ? mi.model : d.model; const mErr = mi ? mi.load_error : d.load_error;
+      box.innerHTML = 'Modelo (' + (modelKey() === 'multi' ? 'multilingüe' : 'inglés') + '): <code>' + esc(mName) + '</code> · ' + (modelLoaded(d) ? 'cargado en memoria' : 'se cargará en la primera extracción (puede tardar 1–2 minutos)') + (mErr ? ' · <strong>error de carga: ' + esc(mErr) + '</strong>' : '') + ' · <button data-act="ner-check" class="underline">Comprobar</button>';
     } else {
       box.classList.remove('hidden'); box.innerHTML = msg + ' <button data-act="ner-check" class="underline">Comprobar</button>';
     }
@@ -263,11 +264,16 @@
     return { labels: out, errors };
   }
 
+  function modelInfo(d) { return d && d.models && d.models[modelKey()] ? d.models[modelKey()] : null; }
+  function modelLoaded(d) { const m = modelInfo(d); return m ? !!m.loaded : !!(d && d.model_loaded); }
+
+  function modelKey() { const el = $('ner-model'); return el && el.value === 'multi' ? 'multi' : 'en'; }
+
   async function callGliner(text, labels, threshold, timeoutMs) {
     const limit = timeoutMs || 190000;
     const ctl = new AbortController(); const t = setTimeout(() => ctl.abort(), limit);
     try {
-      const r = await fetch('api/gliner', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ text, labels, threshold }), signal: ctl.signal, cache: 'no-store', credentials: 'same-origin' });
+      const r = await fetch('api/gliner', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ text, labels, threshold, model: modelKey() }), signal: ctl.signal, cache: 'no-store', credentials: 'same-origin' });
       const data = await r.json().catch(() => null);
       if (!r.ok || !data) throw new Error((data && (data.hint || data.error)) ? (data.error || '') + (data.hint ? ' ' + data.hint : '') : 'HTTP ' + r.status);
       return data;
@@ -303,7 +309,7 @@
       if (useModel) {
         const t0 = performance.now();
         // En «Automático», si el modelo aún no está en memoria la primera extracción puede tardar minutos (descarga y carga): se espera solo unos segundos.
-        const waitMs = pref === 'auto' && !(health && health.data && health.data.model_loaded) ? 15000 : 190000;
+        const waitMs = pref === 'auto' && !modelLoaded(health && health.data) ? 15000 : 190000;
         try {
           const data = await callGliner(text, labels, threshold, waitMs);
           const { ents, dropped } = entitiesFromData(text, data);
@@ -353,7 +359,7 @@
       let engine;
       if (pref === 'sim') engine = 'sim';
       else if (pref === 'gliner') { if (!ready) { A.banner('error', 'GLiNER local no está disponible (ver el estado del motor). Use «Automático» o «Simulación».'); return; } engine = 'gliner'; }
-      else if (ready && health.data && health.data.model_loaded) engine = 'gliner';
+      else if (ready && modelLoaded(health.data)) engine = 'gliner';
       else { engine = 'sim'; notes.push(ready ? 'GLiNER aún no tiene el modelo en memoria: todo el lote se procesó con la simulación léxica. Para usar el modelo elija «GLiNER local» y espere a su carga.' : 'GLiNER local no disponible: todo el lote se procesó con la simulación léxica.'); }
       if (items.length > BATCH_MAX[engine]) { A.banner('error', 'El lote tiene ' + items.length.toLocaleString('es-ES') + ' registros; el máximo con ' + (engine === 'gliner' ? 'GLiNER' : 'la simulación') + ' es ' + BATCH_MAX[engine].toLocaleString('es-ES') + '. Divídalo en varios archivos.'); return; }
       const records = []; let consecutiveErrors = 0; let model = engine === 'gliner' ? (health.data && health.data.model) || 'gliner2' : 'jevner-sim';
@@ -460,6 +466,7 @@
     loadPreset(Object.keys(PRE.NER_PRESETS)[0]);
     syncWithDefinition();
     $('ner-text').addEventListener('input', () => { N.userText = true; updateCount(); });
+    if ($('ner-model')) $('ner-model').addEventListener('change', () => paintStatus());
     $('ner-threshold').addEventListener('input', (e) => { $('ner-threshold-out').textContent = Number(e.target.value).toFixed(2); });
     $('ner-labels').addEventListener('input', (e) => {
       const el = e.target; const l = N.labels.find((x) => String(x.uid) === el.dataset.nl); if (!l) return;

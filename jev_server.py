@@ -565,6 +565,12 @@ class Handler(BaseHTTPRequestHandler):
                 raise ApiError(422, 'Etiqueta inválida: nombre de 1–80 caracteres y descripción de texto de hasta 600.')
             clean[name] = desc or ''
         out = {'text': text, 'labels': clean}
+        if 'model' in data:
+            m = data['model']
+            if m is not None and m not in ('en', 'multi'):
+                raise ApiError(422, "'model' debe ser 'en' (inglés) o 'multi' (multilingüe).")
+            if m is not None:
+                out['model'] = m
         if 'threshold' in data:
             t = data['threshold']
             if isinstance(t, bool) or not isinstance(t, (int, float)) or t < 0 or t > 1:

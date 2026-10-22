@@ -168,6 +168,10 @@ Mantenga la terminal abierta. En **3 · Entidades (GLiNER)**, seleccione **GLiNE
 
 Seleccione **GLiNER local** cuando la actividad requiera el modelo real. Sobre la extracción debe aparecer **«GLiNER2 · fastino/gliner2.5-base-v1»**, o el modelo que haya configurado.
 
+#### Elegir el modelo: inglés o multilingüe
+
+Todas las plantillas preconfiguradas (Definición y Entidades) están en inglés. En **3 · Entidades** el selector **Modelo GLiNER** permite elegir entre **Inglés · GLiNER2.5** (`fastino/gliner2.5-base-v1`, opción por defecto) y **Multilingüe · GLiNER2** (`fastino/gliner2-multi-v1`), este último recomendado para textos en castellano. Cada modelo se descarga y se carga la primera vez que se usa. Para usar una copia local del modelo multilingüe, escriba su ruta en la primera línea útil de `gliner_model_multi.txt` o defina la variable `GLINER2_MODEL_MULTI`. El campo `model` (`"en"` o `"multi"`) se envía en `POST /api/gliner`; `python gliner_service.py --selftest --multi` verifica el modelo multilingüe.
+
 Los tres modos de Entidades se comportan así:
 
 | Selección en Entidades | Qué utiliza | Si el servicio GLiNER no está disponible |
